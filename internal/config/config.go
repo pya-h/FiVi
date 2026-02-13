@@ -13,11 +13,15 @@ type AppConfig struct {
 	ListenHTTPAddr   string
 	Workers          int
 	MaxCandidates    int
+	TopCount         int
 	ProbeTimeout     time.Duration
+	ProbeMinSuccess  int
 	MonitorInterval  time.Duration
 	MonitorFailLimit int
 	BootstrapSources []string
 	Targets          []string
+	SpeedTarget      string
+	SpeedTestBytes   int64
 	RetryBackoff     time.Duration
 	OnlySchemes      map[string]bool
 }
@@ -29,11 +33,15 @@ func ParseFlags() AppConfig {
 		httpAddr         = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
 		workers          = flag.Int("workers", max(6, runtime.NumCPU()*2), "parallel workers for candidate testing")
 		maxCandidates    = flag.Int("max-candidates", 250, "max unique candidates to test per round")
+		topCount         = flag.Int("top", 5, "number of top ranked candidates to print")
 		probeTimeout     = flag.Duration("probe-timeout", 7*time.Second, "timeout per probe request")
+		minProbeSuccess  = flag.Int("min-success", 2, "minimum successful target probes required")
 		monitorInterval  = flag.Duration("monitor-interval", 45*time.Second, "interval between health checks")
 		monitorFailLimit = flag.Int("monitor-fail-limit", 2, "consecutive monitor failures before failover")
 		sourcesCSV       = flag.String("sources", strings.Join(DefaultSources(), ","), "comma-separated subscription URLs")
 		targetsCSV       = flag.String("targets", strings.Join(DefaultTargets(), ","), "comma-separated probe targets")
+		speedTarget      = flag.String("speed-target", "https://www.youtube.com/", "target URL for speed sampling through proxy")
+		speedBytes       = flag.Int64("speed-bytes", 262144, "max bytes to read for speed sampling")
 		retryBackoff     = flag.Duration("retry-backoff", 12*time.Second, "backoff before restarting discovery when all candidates fail")
 		schemesCSV       = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
@@ -50,11 +58,15 @@ func ParseFlags() AppConfig {
 		ListenHTTPAddr:   *httpAddr,
 		Workers:          *workers,
 		MaxCandidates:    *maxCandidates,
+		TopCount:         *topCount,
 		ProbeTimeout:     *probeTimeout,
+		ProbeMinSuccess:  *minProbeSuccess,
 		MonitorInterval:  *monitorInterval,
 		MonitorFailLimit: *monitorFailLimit,
 		BootstrapSources: splitCSV(*sourcesCSV),
 		Targets:          splitCSV(*targetsCSV),
+		SpeedTarget:      strings.TrimSpace(*speedTarget),
+		SpeedTestBytes:   *speedBytes,
 		RetryBackoff:     *retryBackoff,
 		OnlySchemes:      allowed,
 	}

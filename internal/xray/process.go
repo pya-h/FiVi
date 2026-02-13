@@ -13,6 +13,7 @@ import (
 
 type Instance struct {
 	cmd      *exec.Cmd
+	tmpDir   string
 	cfgPath  string
 	logPath  string
 	logFile  *os.File
@@ -34,11 +35,13 @@ func Start(ctx context.Context, bin string, configJSON []byte, name string) (*In
 	}
 	cfgPath := filepath.Join(tmpDir, "config.json")
 	if err := os.WriteFile(cfgPath, configJSON, 0o600); err != nil {
+		_ = os.RemoveAll(tmpDir)
 		return nil, err
 	}
 	logPath := filepath.Join(tmpDir, "xray.log")
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
+		_ = os.RemoveAll(tmpDir)
 		return nil, err
 	}
 
@@ -47,10 +50,11 @@ func Start(ctx context.Context, bin string, configJSON []byte, name string) (*In
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
+		_ = os.RemoveAll(tmpDir)
 		return nil, err
 	}
 
-	inst := &Instance{cmd: cmd, cfgPath: cfgPath, logPath: logPath, logFile: logFile}
+	inst := &Instance{cmd: cmd, tmpDir: tmpDir, cfgPath: cfgPath, logPath: logPath, logFile: logFile}
 	return inst, nil
 }
 
@@ -90,9 +94,8 @@ func (i *Instance) Stop() {
 		if i.logFile != nil {
 			_ = i.logFile.Close()
 		}
-		if i.cfgPath != "" {
-			_ = os.Remove(i.cfgPath)
-			_ = os.Remove(filepath.Dir(i.cfgPath))
+		if i.tmpDir != "" {
+			_ = os.RemoveAll(i.tmpDir)
 		}
 	})
 }

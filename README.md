@@ -14,9 +14,11 @@ A Go CLI that discovers free V2Ray share links, validates which ones truly conne
 - `https://www.cloudflare.com/cdn-cgi/trace`
 6. Keeps only nodes that can reach both `x.com` and `youtube.com`.
 7. Ranks working nodes by success and latency.
-8. Connects using the best node and exposes local SOCKS/HTTP proxy.
-9. Health-checks on interval; on repeated failure, switches to next best.
-10. If all fail, restarts discovery and testing.
+8. Prints a Top-N ranking table (default top 5) each discovery round.
+9. Connects using the best node and exposes local SOCKS/HTTP proxy.
+10. Shows live connection status: uptime, ping, probe success ratio, estimated speed sample.
+11. Health-checks on interval; on repeated failure, switches to next best.
+12. If all fail, restarts discovery and testing.
 
 ## Requirements
 
@@ -42,8 +44,12 @@ Useful flags:
 ./fivi \
   --workers 24 \
   --max-candidates 300 \
+  --top 5 \
+  --min-success 2 \
   --monitor-interval 45s \
   --probe-timeout 7s \
+  --speed-target https://www.youtube.com/ \
+  --speed-bytes 262144 \
   --socks-addr 127.0.0.1:10808 \
   --http-addr 127.0.0.1:10809
 ```

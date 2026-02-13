@@ -19,15 +19,14 @@ import (
 )
 
 type Ranked struct {
-	Raw           string
-	Scheme        string
-	Name          string
-	Successes     int
-	TargetCount   int
-	AvgLatency    time.Duration
-	BannedOK      bool
-	Score         float64
-	ValidationLog string
+	Raw         string
+	Scheme      string
+	Name        string
+	Successes   int
+	TargetCount int
+	AvgLatency  time.Duration
+	BannedOK    bool
+	Score       float64
 }
 
 func Run(ctx context.Context, cfg config.AppConfig) error {
@@ -103,10 +102,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig) ([]Ranked, error
 		}
 		return ranked[i].Score > ranked[j].Score
 	})
-	if len(ranked) > 0 {
-		top := ranked[0]
-		logx.Infof("best candidate: %s (%s) success=%d/%d latency=%s", displayName(top), top.Scheme, top.Successes, top.TargetCount, top.AvgLatency)
-	}
+	printTopCandidates(ranked, cfg.TopCount)
 	return ranked, nil
 }
 
@@ -155,62 +151,54 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 }
 
 func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate) (Ranked, bool) {
-	socksAddr, httpAddr, err := reserveLocalAddrs()
-	if err != nil {
-		return Ranked{}, false
-	}
-	configJSON, parsed, err := xray.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr)
-	if err != nil {
-		return Ranked{}, false
-	}
-
-	runCtx, cancel := context.WithCancel(ctx)
-	inst, err := xray.Start(runCtx, cfg.XRAYBin, configJSON, parsed.Name)
-	if err != nil {
-		cancel()
-		return Ranked{}, false
-	}
-	defer func() {
+	for attempt := 0; attempt < 3; attempt++ {
+		socksAddr, httpAddr, err := reserveLocalAddrs()
+		if err != nil {
+			return Ranked{}, false
+		}
+		configJSON, parsed, err := xray.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr)
+		if err != nil {
+			return Ranked{}, false
+		}
+		inst, err := xray.Start(ctx, cfg.XRAYBin, configJSON, parsed.Name)
+		if err != nil {
+			continue
+		}
+		sleepWithCancel(ctx, 900*time.Millisecond)
+		res := probe.CheckThroughSOCKS(ctx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
 		inst.Stop()
-		cancel()
-	}()
+		if !isProbeQualified(cfg, res) {
+			continue
+		}
+		latMs := float64(max(int(res.AvgLatency.Milliseconds()), 1))
+		score := float64(res.Successes*1000) - latMs
 
-	sleepWithCancel(ctx, 850*time.Millisecond)
-	res := probe.CheckThroughSOCKS(ctx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
-	if res.Successes == 0 {
-		return Ranked{}, false
+		return Ranked{
+			Raw:         c.Raw,
+			Scheme:      c.Scheme,
+			Name:        parsed.Name,
+			Successes:   res.Successes,
+			TargetCount: res.TargetCount,
+			AvgLatency:  res.AvgLatency,
+			BannedOK:    hasRequiredBannedTargetsOK(res.Targets, cfg.Targets),
+			Score:       score,
+		}, true
 	}
-	bannedOK := hasRequiredBannedTargetsOK(res.Targets)
-	if !bannedOK {
-		return Ranked{}, false
-	}
-	latMs := float64(max(int(res.AvgLatency.Milliseconds()), 1))
-	score := float64(res.Successes*1000) - latMs
-
-	return Ranked{
-		Raw:           c.Raw,
-		Scheme:        c.Scheme,
-		Name:          parsed.Name,
-		Successes:     res.Successes,
-		TargetCount:   res.TargetCount,
-		AvgLatency:    res.AvgLatency,
-		BannedOK:      bannedOK,
-		Score:         score,
-		ValidationLog: inst.LogPath(),
-	}, true
+	return Ranked{}, false
 }
 
 func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranked) error {
 	for i := 0; i < len(ranked); i++ {
 		cand := ranked[i]
-		inst, err := startCandidate(ctx, cfg, cand.Raw, cfg.ListenSocksAddr, cfg.ListenHTTPAddr)
+		inst, initialProbe, initialSpeed, err := startCandidate(ctx, cfg, cand.Raw, cfg.ListenSocksAddr, cfg.ListenHTTPAddr)
 		if err != nil {
 			logx.Warnf("connect failed for %s: %v", displayName(cand), err)
 			continue
 		}
 
-		logx.Infof("connected to %s via %s | SOCKS=%s HTTP=%s PID=%d", displayName(cand), cand.Scheme, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID())
-		monitorErr := monitorConnection(ctx, cfg, inst)
+		connectedAt := time.Now()
+		printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID(), connectedAt, initialProbe, initialSpeed, 0)
+		monitorErr := monitorConnection(ctx, cfg, cand, connectedAt)
 		inst.Stop()
 		if monitorErr == nil || errors.Is(monitorErr, context.Canceled) {
 			return monitorErr
@@ -220,24 +208,33 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 	return fmt.Errorf("exhausted %d ranked nodes", len(ranked))
 }
 
-func monitorConnection(ctx context.Context, cfg config.AppConfig, inst *xray.Instance) error {
+func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, connectedAt time.Time) error {
 	ticker := time.NewTicker(cfg.MonitorInterval)
 	defer ticker.Stop()
 
 	failures := 0
+	tick := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			tick++
 			res := probe.CheckThroughSOCKS(ctx, cfg.ListenSocksAddr, cfg.Targets, cfg.ProbeTimeout)
-			if res.Successes == len(cfg.Targets) && hasRequiredBannedTargetsOK(res.Targets) {
+			if isProbeQualified(cfg, res) {
 				failures = 0
-				logx.Infof("health check ok latency=%s", res.AvgLatency)
+				speed := 0.0
+				if tick%3 == 0 {
+					s, err := probe.MeasureDownloadSpeedMbps(ctx, cfg.ListenSocksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
+					if err == nil {
+						speed = s
+					}
+				}
+				printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, 0, connectedAt, res, speed, failures)
 				continue
 			}
 			failures++
-			logx.Warnf("health check failed %d/%d (success=%d/%d)", failures, cfg.MonitorFailLimit, res.Successes, len(cfg.Targets))
+			printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, 0, connectedAt, res, 0, failures)
 			if failures >= cfg.MonitorFailLimit {
 				return fmt.Errorf("health checks failed %d times", failures)
 			}
@@ -245,23 +242,46 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, inst *xray.Ins
 	}
 }
 
-func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string) (*xray.Instance, error) {
+func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string) (*xray.Instance, probe.Result, float64, error) {
 	cfgJSON, _, err := xray.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr)
 	if err != nil {
-		return nil, err
+		return nil, probe.Result{}, 0, err
 	}
-	runCtx, _ := context.WithCancel(ctx)
-	inst, err := xray.Start(runCtx, cfg.XRAYBin, cfgJSON, "active")
+	inst, err := xray.Start(ctx, cfg.XRAYBin, cfgJSON, "active")
 	if err != nil {
-		return nil, err
+		return nil, probe.Result{}, 0, err
 	}
 	sleepWithCancel(ctx, 1200*time.Millisecond)
 	res := probe.CheckThroughSOCKS(ctx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
-	if res.Successes == 0 || !hasRequiredBannedTargetsOK(res.Targets) {
+	if !isProbeQualified(cfg, res) {
 		inst.Stop()
-		return nil, fmt.Errorf("initial probe failed success=%d/%d", res.Successes, len(cfg.Targets))
+		return nil, probe.Result{}, 0, fmt.Errorf("initial probe failed success=%d/%d", res.Successes, len(cfg.Targets))
 	}
-	return inst, nil
+	speed, _ := probe.MeasureDownloadSpeedMbps(ctx, socksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
+	return inst, res, speed, nil
+}
+
+func isProbeQualified(cfg config.AppConfig, res probe.Result) bool {
+	minSuccess := cfg.ProbeMinSuccess
+	if minSuccess < 1 {
+		minSuccess = 1
+	}
+	if minSuccess > len(cfg.Targets) {
+		minSuccess = len(cfg.Targets)
+	}
+	if res.Successes < minSuccess {
+		return false
+	}
+	return hasRequiredBannedTargetsOK(res.Targets, cfg.Targets)
+}
+
+func sleepWithCancel(ctx context.Context, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
 }
 
 func reserveLocalAddrs() (socksAddr, httpAddr string, err error) {
@@ -286,16 +306,12 @@ func reserveAddr() (string, error) {
 	return addr, nil
 }
 
-func sleepWithCancel(ctx context.Context, d time.Duration) {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-	case <-t.C:
+func hasRequiredBannedTargetsOK(results []probe.TargetResult, expectedTargets []string) bool {
+	requireX := hasExpected(expectedTargets, "x.com")
+	requireY := hasExpected(expectedTargets, "youtube.com")
+	if !requireX && !requireY {
+		return true
 	}
-}
-
-func hasRequiredBannedTargetsOK(results []probe.TargetResult) bool {
 	var xOK, yOK bool
 	for _, r := range results {
 		if strings.Contains(r.URL, "x.com") && r.OK {
@@ -305,17 +321,73 @@ func hasRequiredBannedTargetsOK(results []probe.TargetResult) bool {
 			yOK = true
 		}
 	}
-	return xOK && yOK
+	if requireX && !xOK {
+		return false
+	}
+	if requireY && !yOK {
+		return false
+	}
+	return true
+}
+
+func hasExpected(targets []string, token string) bool {
+	for _, t := range targets {
+		if strings.Contains(t, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func displayName(r Ranked) string {
 	if strings.TrimSpace(r.Name) != "" {
 		return r.Name
 	}
-	if len(r.Raw) > 28 {
-		return r.Raw[:28] + "..."
+	if len(r.Raw) > 42 {
+		return r.Raw[:42] + "..."
 	}
 	return r.Raw
+}
+
+func printTopCandidates(ranked []Ranked, topN int) {
+	if topN <= 0 {
+		topN = 5
+	}
+	if topN > len(ranked) {
+		topN = len(ranked)
+	}
+	logx.Infof("Top %d candidates:", topN)
+	for i := 0; i < topN; i++ {
+		r := ranked[i]
+		logx.Infof("#%d %s | %s | success=%d/%d | ping=%s | score=%.1f", i+1, displayName(r), r.Scheme, r.Successes, r.TargetCount, r.AvgLatency.Round(time.Millisecond), r.Score)
+	}
+}
+
+func printConnectionStatus(c Ranked, socksAddr, httpAddr string, pid int, connectedAt time.Time, res probe.Result, speedMbps float64, failures int) {
+	status := "OK"
+	if failures > 0 {
+		status = fmt.Sprintf("DEGRADED(%d)", failures)
+	}
+	pidPart := ""
+	if pid > 0 {
+		pidPart = fmt.Sprintf(" pid=%d", pid)
+	}
+	speedPart := "n/a"
+	if speedMbps > 0 {
+		speedPart = fmt.Sprintf("%.2fMbps", speedMbps)
+	}
+	logx.Infof("[%s] %s | uptime=%s | ping=%s | speed=%s | success=%d/%d | socks=%s http=%s%s",
+		status,
+		displayName(c),
+		time.Since(connectedAt).Round(time.Second),
+		res.AvgLatency.Round(time.Millisecond),
+		speedPart,
+		res.Successes,
+		res.TargetCount,
+		socksAddr,
+		httpAddr,
+		pidPart,
+	)
 }
 
 func max(a, b int) int {

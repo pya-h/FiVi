@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"golang.org/x/net/proxy"
@@ -34,7 +35,7 @@ func CheckThroughSOCKS(ctx context.Context, socksAddr string, targets []string, 
 		return res
 	}
 
-	dialer, err := proxy.SOCKS5("tcp", socksAddr, nil, &net.Dialer{Timeout: timeout})
+	client, err := newSOCKSClient(socksAddr, timeout)
 	if err != nil {
 		for _, t := range targets {
 			res.Targets = append(res.Targets, TargetResult{URL: t, Err: err.Error()})
@@ -42,42 +43,45 @@ func CheckThroughSOCKS(ctx context.Context, socksAddr string, targets []string, 
 		return res
 	}
 
-	tr := &http.Transport{
-		DialContext: func(c context.Context, network, addr string) (net.Conn, error) {
-			if deadline, ok := c.Deadline(); ok {
-				_ = deadline
-			}
-			return dialer.Dial(network, addr)
-		},
-		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
-		TLSHandshakeTimeout:   timeout,
-		ResponseHeaderTimeout: timeout,
-		DisableKeepAlives:     true,
+	type item struct {
+		idx int
+		r   TargetResult
 	}
-	client := &http.Client{Transport: tr, Timeout: timeout}
+	items := make(chan item, len(targets))
+	wg := sync.WaitGroup{}
+	for idx, target := range targets {
+		idx := idx
+		target := target
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			start := time.Now()
+			status, reqErr := request204Or200(t, client, target)
+			lat := time.Since(start)
+			r := TargetResult{URL: target, Status: status, Latency: lat}
+			if reqErr != nil {
+				r.Err = reqErr.Error()
+			} else {
+				r.OK = true
+			}
+			items <- item{idx: idx, r: r}
+		}()
+	}
+	wg.Wait()
+	close(items)
 
+	ordered := make([]TargetResult, len(targets))
 	totalLatency := time.Duration(0)
-	for _, target := range targets {
-		t, cancel := context.WithTimeout(ctx, timeout)
-		start := time.Now()
-		status, err := request204Or200(t, client, target)
-		lat := time.Since(start)
-		cancel()
-
-		r := TargetResult{URL: target, Status: status, Latency: lat}
-		if err != nil {
-			r.Err = err.Error()
-			res.Targets = append(res.Targets, r)
-			continue
-		}
-		r.OK = true
-		res.Successes++
-		totalLatency += lat
+	for it := range items {
+		ordered[it.idx] = it.r
+	}
+	for _, r := range ordered {
 		res.Targets = append(res.Targets, r)
-
-		select {
-		case <-t.Done():
-		default:
+		if r.OK {
+			res.Successes++
+			totalLatency += r.Latency
 		}
 	}
 
@@ -85,6 +89,38 @@ func CheckThroughSOCKS(ctx context.Context, socksAddr string, targets []string, 
 		res.AvgLatency = totalLatency / time.Duration(res.Successes)
 	}
 	return res
+}
+
+func MeasureDownloadSpeedMbps(ctx context.Context, socksAddr, target string, timeout time.Duration, maxBytes int64) (float64, error) {
+	if maxBytes <= 0 {
+		maxBytes = 128 * 1024
+	}
+	client, err := newSOCKSClient(socksAddr, timeout)
+	if err != nil {
+		return 0, err
+	}
+	t, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(t, http.MethodGet, target, nil)
+	if err != nil {
+		return 0, err
+	}
+	start := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, maxBytes))
+	if err != nil {
+		return 0, err
+	}
+	elapsed := time.Since(start).Seconds()
+	if elapsed <= 0 || n <= 0 {
+		return 0, fmt.Errorf("insufficient data for speed measurement")
+	}
+	return (float64(n*8) / 1_000_000.0) / elapsed, nil
 }
 
 func request204Or200(ctx context.Context, client *http.Client, target string) (int, error) {
@@ -102,4 +138,27 @@ func request204Or200(ctx context.Context, client *http.Client, target string) (i
 		return resp.StatusCode, nil
 	}
 	return resp.StatusCode, errors.New(fmt.Sprintf("status %d", resp.StatusCode))
+}
+
+func newSOCKSClient(socksAddr string, timeout time.Duration) (*http.Client, error) {
+	base := &net.Dialer{Timeout: timeout}
+	dialer, err := proxy.SOCKS5("tcp", socksAddr, nil, base)
+	if err != nil {
+		return nil, err
+	}
+
+	dialContext := func(c context.Context, network, addr string) (net.Conn, error) {
+		if d, ok := dialer.(proxy.ContextDialer); ok {
+			return d.DialContext(c, network, addr)
+		}
+		return dialer.Dial(network, addr)
+	}
+	tr := &http.Transport{
+		DialContext:           dialContext,
+		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSHandshakeTimeout:   timeout,
+		ResponseHeaderTimeout: timeout,
+		DisableKeepAlives:     true,
+	}
+	return &http.Client{Transport: tr, Timeout: timeout}, nil
 }

@@ -85,6 +85,9 @@ func parseLines(text string) []string {
 		}
 		out = append(out, line)
 	}
+	if err := scanner.Err(); err != nil {
+		return out
+	}
 	return out
 }
 
