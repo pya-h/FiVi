@@ -47,10 +47,18 @@ Repository reviewed: `https://github.com/pydea-rs/v2finder`
 - `plans/TASKS.md`
 - `plans/CONTEXT.md` (this file)
 
+## Current Completion Status
+- [x] Milestone A (`A1`..`A5`)
+- [x] Milestone B (`B1`..`B5`)
+- [ ] Milestone C (`C1`..`C4`)
+- [ ] Milestone D (`D1`..`D4`)
+- [ ] Milestone E (`E1`..`E3`)
+- [ ] Milestone F (`F1`..`F4`)
+
 ## Next Recommended Execution Start
-1. Start Milestone A from `plans/TASKS.md` (`A1` to `A5`)
-2. Keep `xray` as baseline mode while building `EngineAdapter`
-3. Add `sing-box` after adapter refactor (Milestone D)
+1. Implement `C3` from `plans/TASKS.md` (Bubble Tea dashboard for interactive mode).
+2. Reuse the current `WorkerEvent` stream as the single source for both TUI and log visibility.
+3. After Milestone C is fully complete, continue with Milestone D (`EngineAdapter` refactor and `sing-box`).
 
 ## Context Update Protocol (mandatory)
 After each completed task, append a section to this file:
@@ -238,3 +246,70 @@ After each completed task, append a section to this file:
 - `go build ./...` passed.
 - Next task or blocker:
 - Milestone B completed (`B1`..`B5`). Next task: `C1` TTY mode switch and `--no-tui`.
+
+## Session Finalization (2026-02-24)
+- Context file status: finalized for the current session state.
+- Source of truth for completed work: task update entries `A1`..`B5` in this file and checkmarks in `plans/TASKS.md`.
+- Verified baseline at close:
+- `go test ./...` passed
+- `go build ./...` passed
+- Mandatory carry-forward rule remains active:
+- Update this file at the end of each completed task in future sessions.
+
+## Task Update: C1 (2026-02-24)
+- Summary of changes:
+- Added `internal/ui` package with terminal capability detection and mode selection (`tui` vs `log`).
+- Added `--no-tui` flag to force plain log mode even in interactive terminals.
+- Wired startup mode selection in `main` with explicit mode logging and mode-branch scaffolding for upcoming TUI integration.
+- Added unit tests for mode selection logic.
+- Files touched:
+- `internal/ui/mode.go`
+- `internal/ui/mode_test.go`
+- `internal/config/config.go`
+- `main.go`
+- Behavior impact:
+- Non-interactive terminals now explicitly resolve to log mode.
+- Interactive terminals resolve to TUI mode unless `--no-tui` is set (current runner still uses engine log path; TUI rendering arrives in `C3`).
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- Next task: `C2` worker event bus and stage event emission.
+
+## Task Update: C2 (2026-02-24)
+- Summary of changes:
+- Added typed worker event model (`WorkerEvent`) with stage and status enums.
+- Added `RunWithEvents` execution path so callers can subscribe to worker stage events.
+- Wired candidate workers to emit stage events for `parse`, `spawn`, `probe`, and `done` with statuses (`running`, `ok`, `failed`, `probable`), attempt number, reason, and elapsed time.
+- Added regression tests for non-blocking event emission and parse-failure event sequence.
+- Files touched:
+- `internal/engine/events.go`
+- `internal/engine/events_test.go`
+- `internal/engine/engine.go`
+- Behavior impact:
+- Candidate validation now produces a structured event stream that can drive both TUI and log presentations.
+- Stage-level transitions and failures are now externally observable instead of only implicit in aggregate logs.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- Next task: `C3` Bubble Tea dashboard.
+
+## Task Update: C4 (2026-02-24)
+- Summary of changes:
+- Added plain-log progress reporter that consumes `WorkerEvent` stream and prints periodic one-line snapshots.
+- Wired `main` runtime path to run engine with event stream (`RunWithEvents`) and launch log-mode reporter.
+- Added tests for progress-state accounting and reporter output behavior.
+- Files touched:
+- `main.go`
+- `internal/ui/progress.go`
+- `internal/ui/progress_test.go`
+- Behavior impact:
+- In log mode (`--no-tui` or non-interactive terminals), users now get periodic progress snapshots (`processed/working/probable/failed/running`) during candidate testing.
+- This reduces perceived hangs during long discovery/validation rounds.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- `go run . --help` verified `--no-tui` flag exposure.
+- Next task or blocker:
+- Remaining Milestone C task: `C3` Bubble Tea dashboard for interactive mode.

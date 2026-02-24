@@ -14,6 +14,7 @@ type AppConfig struct {
 	XRAYBin          string
 	ListenSocksAddr  string
 	ListenHTTPAddr   string
+	NoTUI            bool
 	Workers          int
 	MaxCandidates    int
 	TopCount         int
@@ -36,6 +37,7 @@ func ParseFlags() AppConfig {
 		xrayBin          = flag.String("xray-bin", defaultXrayBin(), "path to xray binary (or set FIVI_XRAY_BIN)")
 		socksAddr        = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
 		httpAddr         = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
+		noTUI            = flag.Bool("no-tui", false, "disable TUI mode even in interactive terminals")
 		workers          = flag.Int("workers", max(6, runtime.NumCPU()*2), "parallel workers for candidate testing")
 		maxCandidates    = flag.Int("max-candidates", 250, "max unique candidates to test per round")
 		topCount         = flag.Int("top", 5, "number of top ranked candidates to print")
@@ -63,6 +65,7 @@ func ParseFlags() AppConfig {
 		XRAYBin:          *xrayBin,
 		ListenSocksAddr:  *socksAddr,
 		ListenHTTPAddr:   *httpAddr,
+		NoTUI:            *noTUI,
 		Workers:          *workers,
 		MaxCandidates:    *maxCandidates,
 		TopCount:         *topCount,

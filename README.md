@@ -48,6 +48,7 @@ Useful flags:
 
 ```bash
 ./fivi \
+  --no-tui \
   --workers 24 \
   --max-candidates 300 \
   --top 5 \
@@ -59,6 +60,8 @@ Useful flags:
   --socks-addr 127.0.0.1:10808 \
   --http-addr 127.0.0.1:10809
 ```
+
+`--no-tui` forces plain log mode. In log mode, FiVi prints periodic one-line progress snapshots during candidate testing.
 
 Override sources:
 

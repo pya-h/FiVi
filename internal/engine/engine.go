@@ -72,6 +72,10 @@ type validationSummary struct {
 }
 
 func Run(ctx context.Context, cfg config.AppConfig) error {
+	return RunWithEvents(ctx, cfg, nil)
+}
+
+func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent) error {
 	if err := xray.EnsureBinary(cfg.XRAYBin); err != nil {
 		return err
 	}
@@ -84,7 +88,7 @@ func Run(ctx context.Context, cfg config.AppConfig) error {
 		default:
 		}
 
-		ranked, err := discoverAndRank(ctx, cfg, health)
+		ranked, err := discoverAndRank(ctx, cfg, health, events)
 		if err != nil {
 			logx.Errorf("discovery failed: %v", err)
 			sleepWithCancel(ctx, cfg.RetryBackoff)
@@ -107,7 +111,7 @@ func Run(ctx context.Context, cfg config.AppConfig) error {
 	}
 }
 
-func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker) ([]Ranked, error) {
+func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker, events chan<- WorkerEvent) ([]Ranked, error) {
 	roundSources := selectSourcesForRound(cfg.BootstrapSources, health, time.Now())
 	logx.Infof("fetching subscriptions from %d/%d sources", len(roundSources), len(cfg.BootstrapSources))
 
@@ -141,7 +145,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	}
 	logx.Infof("testing %d candidates with %d workers", len(cands), cfg.Workers)
 
-	validation := validateCandidates(ctx, cfg, cands)
+	validation := validateCandidates(ctx, cfg, cands, events)
 	if len(validation.Working) == 0 {
 		if err := writeCandidateBuckets(nil, validation.Probable); err != nil {
 			logx.Warnf("failed to write candidate buckets: %v", err)
@@ -169,7 +173,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	return ranked, nil
 }
 
-func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate) validationSummary {
+func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate, events chan<- WorkerEvent) validationSummary {
 	workers := cfg.Workers
 	if workers < 1 {
 		workers = 1
@@ -180,8 +184,9 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 	wg := sync.WaitGroup{}
 
 	for i := 0; i < workers; i++ {
+		workerID := i + 1
 		wg.Add(1)
-		go func() {
+		go func(workerID int) {
 			defer wg.Done()
 			for {
 				select {
@@ -191,7 +196,7 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 					if !ok {
 						return
 					}
-					outcome := testOne(ctx, cfg, c)
+					outcome := testOne(ctx, cfg, c, workerID, events)
 					select {
 					case outcomes <- outcome:
 					case <-ctx.Done():
@@ -199,7 +204,7 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 					}
 				}
 			}
-		}()
+		}(workerID)
 	}
 
 	go func() {
@@ -244,37 +249,59 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 	return summary
 }
 
-func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate) candidateOutcome {
+func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, workerID int, events chan<- WorkerEvent) candidateOutcome {
 	candidateCtx, cancel := context.WithTimeout(ctx, effectiveCandidateTimeout(cfg))
 	defer cancel()
 
+	candidateStarted := time.Now()
+	emitDone := func(status WorkerStatus, reason FailureReason, err error, attempt int) {
+		emitStageEvent(events, workerID, c.Raw, WorkerStageDone, status, attempt, reason, err, candidateStarted)
+	}
+
 	lastReason := FailureReasonEngineStart
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 1; attempt <= 3; attempt++ {
 		select {
 		case <-candidateCtx.Done():
-			return candidateOutcome{Raw: c.Raw, Reason: candidateFailureReasonFromCtx(candidateCtx)}
+			reason := candidateFailureReasonFromCtx(candidateCtx)
+			emitDone(WorkerStatusFailed, reason, candidateCtx.Err(), attempt)
+			return candidateOutcome{Raw: c.Raw, Reason: reason}
 		default:
 		}
 
+		parseStarted := time.Now()
+		emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusRunning, attempt, "", nil, parseStarted)
 		socksAddr, httpAddr, err := reserveLocalAddrs()
 		if err != nil {
+			emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusFailed, attempt, FailureReasonReserveAddr, err, parseStarted)
+			emitDone(WorkerStatusFailed, FailureReasonReserveAddr, err, attempt)
 			return candidateOutcome{Raw: c.Raw, Reason: FailureReasonReserveAddr}
 		}
 		configJSON, parsed, err := xray.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr)
 		if err != nil {
+			emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusFailed, attempt, FailureReasonParseCandidate, err, parseStarted)
+			emitDone(WorkerStatusFailed, FailureReasonParseCandidate, err, attempt)
 			return candidateOutcome{Raw: c.Raw, Reason: FailureReasonParseCandidate}
 		}
+		emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusOK, attempt, "", nil, parseStarted)
+
+		spawnStarted := time.Now()
+		emitStageEvent(events, workerID, c.Raw, WorkerStageSpawn, WorkerStatusRunning, attempt, "", nil, spawnStarted)
 		inst, err := xray.Start(candidateCtx, cfg.XRAYBin, configJSON, parsed.Name)
 		if err != nil {
 			lastReason = FailureReasonEngineStart
+			emitStageEvent(events, workerID, c.Raw, WorkerStageSpawn, WorkerStatusFailed, attempt, FailureReasonEngineStart, err, spawnStarted)
 			continue
 		}
 		if err := waitForProxyReady(candidateCtx, socksAddr, httpAddr, cfg.StartupTimeout); err != nil {
 			inst.Stop()
 			lastReason = FailureReasonEngineNotReady
+			emitStageEvent(events, workerID, c.Raw, WorkerStageSpawn, WorkerStatusFailed, attempt, FailureReasonEngineNotReady, err, spawnStarted)
 			continue
 		}
+		emitStageEvent(events, workerID, c.Raw, WorkerStageSpawn, WorkerStatusOK, attempt, "", nil, spawnStarted)
 
+		probeStarted := time.Now()
+		emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusRunning, attempt, "", nil, probeStarted)
 		res := probe.CheckThroughSOCKS(candidateCtx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
 		inst.Stop()
 		if isProbeQualified(cfg, res) {
@@ -290,6 +317,8 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate) cand
 				BannedOK:    hasRequiredBannedTargetsOK(res.Targets, cfg.Targets),
 				Score:       score,
 			}
+			emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusOK, attempt, "", nil, probeStarted)
+			emitDone(WorkerStatusOK, "", nil, attempt)
 			return candidateOutcome{Raw: c.Raw, Ranked: &ranked}
 		}
 		if res.Successes > 0 {
@@ -302,14 +331,20 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate) cand
 				AvgLatency:  res.AvgLatency,
 				Reason:      FailureReasonProbePartial,
 			}
+			emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusFailed, attempt, FailureReasonProbePartial, nil, probeStarted)
+			emitDone(WorkerStatusProbable, FailureReasonProbePartial, nil, attempt)
 			return candidateOutcome{Raw: c.Raw, Probable: &probable, Reason: FailureReasonProbePartial}
 		}
 		lastReason = FailureReasonProbeFailed
+		emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusFailed, attempt, FailureReasonProbeFailed, nil, probeStarted)
 	}
 
 	if candidateCtx.Err() != nil {
-		return candidateOutcome{Raw: c.Raw, Reason: candidateFailureReasonFromCtx(candidateCtx)}
+		reason := candidateFailureReasonFromCtx(candidateCtx)
+		emitDone(WorkerStatusFailed, reason, candidateCtx.Err(), 3)
+		return candidateOutcome{Raw: c.Raw, Reason: reason}
 	}
+	emitDone(WorkerStatusFailed, lastReason, nil, 3)
 	return candidateOutcome{Raw: c.Raw, Reason: lastReason}
 }
 

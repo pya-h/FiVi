@@ -51,11 +51,11 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Done when: tests show no deadlock and clean shutdown.
 
 ## Milestone C: TUI and Visibility
-11. `C1` Add `internal/ui` with TTY detection and `--no-tui` flag.
+11. [x] `C1` Add `internal/ui` with TTY detection and `--no-tui` flag.
 - Output: mode switch (TUI/log).
 - Done when: non-interactive shells stay in log mode.
 
-12. `C2` Add worker event bus and stage events.
+12. [x] `C2` Add worker event bus and stage events.
 - Output: `WorkerEvent` stream.
 - Done when: all major stages emit start/end/fail events.
 
@@ -63,7 +63,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: live table + progress counters + current node status.
 - Done when: worker states visibly update during testing.
 
-14. `C4` Add concise plain-log progress snapshots for `--no-tui`.
+14. [x] `C4` Add concise plain-log progress snapshots for `--no-tui`.
 - Output: periodic one-line summaries.
 - Done when: users can see progress without TUI.
 
