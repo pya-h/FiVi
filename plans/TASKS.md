@@ -59,7 +59,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `WorkerEvent` stream.
 - Done when: all major stages emit start/end/fail events.
 
-13. `C3` Implement Bubble Tea dashboard.
+13. [x] `C3` Implement Bubble Tea dashboard.
 - Output: live table + progress counters + current node status.
 - Done when: worker states visibly update during testing.
 

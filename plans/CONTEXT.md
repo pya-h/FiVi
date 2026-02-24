@@ -50,15 +50,15 @@ Repository reviewed: `https://github.com/pydea-rs/v2finder`
 ## Current Completion Status
 - [x] Milestone A (`A1`..`A5`)
 - [x] Milestone B (`B1`..`B5`)
-- [ ] Milestone C (`C1`..`C4`)
+- [x] Milestone C (`C1`..`C4`)
 - [ ] Milestone D (`D1`..`D4`)
 - [ ] Milestone E (`E1`..`E3`)
 - [ ] Milestone F (`F1`..`F4`)
 
 ## Next Recommended Execution Start
-1. Implement `C3` from `plans/TASKS.md` (Bubble Tea dashboard for interactive mode).
-2. Reuse the current `WorkerEvent` stream as the single source for both TUI and log visibility.
-3. After Milestone C is fully complete, continue with Milestone D (`EngineAdapter` refactor and `sing-box`).
+1. Start `D1` from `plans/TASKS.md` (introduce `EngineAdapter` and refactor xray integration behind it).
+2. Continue with `D2` sing-box adapter after interface boundary is stable.
+3. Add engine selection flags and validation in `D3`, then close Milestone D with `D4` feasibility note.
 
 ## Context Update Protocol (mandatory)
 After each completed task, append a section to this file:
@@ -313,3 +313,24 @@ After each completed task, append a section to this file:
 - `go run . --help` verified `--no-tui` flag exposure.
 - Next task or blocker:
 - Remaining Milestone C task: `C3` Bubble Tea dashboard for interactive mode.
+
+## Task Update: C3 (2026-02-24)
+- Summary of changes:
+- Implemented Bubble Tea interactive dashboard wired to `WorkerEvent` stream.
+- Added live progress counters, active stage summary, worker table, and current-node display.
+- Refactored mode runner so interactive terminals launch dashboard while engine runs concurrently; log mode path remains with periodic plain snapshots.
+- Added dashboard unit tests and module wiring for Bubble Tea/Lipgloss dependencies.
+- Files touched:
+- `internal/ui/dashboard.go`
+- `internal/ui/dashboard_test.go`
+- `main.go`
+- `go.mod`
+- `go.sum`
+- Behavior impact:
+- Interactive mode now visibly updates worker states in real time during candidate testing.
+- `--no-tui` continues to force log mode; non-interactive shells remain in log mode.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- Milestone C completed (`C1`..`C4`). Next task: `D1` engine adapter refactor.

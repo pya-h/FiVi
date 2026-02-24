@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"fivi/internal/config"
+	"fivi/internal/engines"
 	"fivi/internal/fetch"
 	"fivi/internal/logx"
 	"fivi/internal/parser"
 	"fivi/internal/probe"
 	"fivi/internal/sources"
-	"fivi/internal/xray"
 )
 
 type Ranked struct {
@@ -76,7 +76,14 @@ func Run(ctx context.Context, cfg config.AppConfig) error {
 }
 
 func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent) error {
-	if err := xray.EnsureBinary(cfg.XRAYBin); err != nil {
+	return RunWithAdapter(ctx, cfg, events, defaultAdapter())
+}
+
+func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent, adapter engines.Adapter) error {
+	if adapter == nil {
+		adapter = defaultAdapter()
+	}
+	if err := adapter.EnsureBinary(cfg.XRAYBin); err != nil {
 		return err
 	}
 	health := sources.NewHealthTracker(cfg.BootstrapSources)
@@ -88,7 +95,7 @@ func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- Work
 		default:
 		}
 
-		ranked, err := discoverAndRank(ctx, cfg, health, events)
+		ranked, err := discoverAndRank(ctx, cfg, health, events, adapter)
 		if err != nil {
 			logx.Errorf("discovery failed: %v", err)
 			sleepWithCancel(ctx, cfg.RetryBackoff)
@@ -100,7 +107,7 @@ func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- Work
 			continue
 		}
 
-		if err := connectAndMonitor(ctx, cfg, ranked); err != nil {
+		if err := connectAndMonitor(ctx, cfg, ranked, adapter); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
 			}
@@ -145,7 +152,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	}
 	logx.Infof("testing %d candidates with %d workers", len(cands), cfg.Workers)
 
-	validation := validateCandidates(ctx, cfg, cands, events)
+	validation := validateCandidates(ctx, cfg, cands, events, adapter)
 	if len(validation.Working) == 0 {
 		if err := writeCandidateBuckets(nil, validation.Probable); err != nil {
 			logx.Warnf("failed to write candidate buckets: %v", err)
@@ -173,7 +180,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	return ranked, nil
 }
 
-func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate, events chan<- WorkerEvent) validationSummary {
+func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate, events chan<- WorkerEvent, adapter engines.Adapter) validationSummary {
 	workers := cfg.Workers
 	if workers < 1 {
 		workers = 1
@@ -196,7 +203,7 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 					if !ok {
 						return
 					}
-					outcome := testOne(ctx, cfg, c, workerID, events)
+					outcome := testOne(ctx, cfg, c, workerID, events, adapter)
 					select {
 					case outcomes <- outcome:
 					case <-ctx.Done():
