@@ -63,15 +63,25 @@ func DecodeSubscription(raw []byte) ([]string, error) {
 		return nil, errors.New("empty response")
 	}
 
-	// Many subscriptions are either plain lines or one big base64 blob.
-	if maybeBase64Blob(text) {
-		decoded, err := tryDecodeBase64(text)
+	links := parseLines(text)
+	if hasSupportedScheme(links) {
+		return links, nil
+	}
+
+	// Many subscriptions are either plain lines or one base64 blob, sometimes
+	// wrapped with line breaks/whitespace by mirrors or CDNs.
+	compact := compactBase64Text(text)
+	if maybeBase64Blob(compact) {
+		decoded, err := tryDecodeBase64(compact)
 		if err == nil {
-			text = strings.TrimSpace(decoded)
+			decodedLinks := parseLines(strings.TrimSpace(decoded))
+			if len(decodedLinks) > 0 {
+				return decodedLinks, nil
+			}
 		}
 	}
 
-	return parseLines(text), nil
+	return links, nil
 }
 
 func parseLines(text string) []string {
@@ -117,4 +127,28 @@ func tryDecodeBase64(s string) (string, error) {
 		}
 	}
 	return "", errors.New("invalid base64")
+}
+
+func compactBase64Text(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\n', '\r', '\t':
+			return -1
+		default:
+			return r
+		}
+	}, s)
+}
+
+func hasSupportedScheme(links []string) bool {
+	for _, l := range links {
+		v := strings.ToLower(strings.TrimSpace(l))
+		if strings.HasPrefix(v, "vmess://") ||
+			strings.HasPrefix(v, "vless://") ||
+			strings.HasPrefix(v, "trojan://") ||
+			strings.HasPrefix(v, "ss://") {
+			return true
+		}
+	}
+	return false
 }

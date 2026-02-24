@@ -76,7 +76,7 @@ func ParseURI(raw string) (Parsed, error) {
 }
 
 func parseVMess(raw string) (Parsed, error) {
-	payload := strings.TrimPrefix(raw, "vmess://")
+	payload := raw[len("vmess://"):]
 	decoded, err := decodeAnyBase64(payload)
 	if err != nil {
 		return Parsed{}, fmt.Errorf("vmess decode: %w", err)
@@ -194,7 +194,7 @@ func parseTrojan(raw string) (Parsed, error) {
 }
 
 func parseSS(raw string) (Parsed, error) {
-	trimmed := strings.TrimPrefix(raw, "ss://")
+	trimmed := raw[len("ss://"):]
 	name := ""
 	if idx := strings.Index(trimmed, "#"); idx >= 0 {
 		name, _ = url.QueryUnescape(trimmed[idx+1:])

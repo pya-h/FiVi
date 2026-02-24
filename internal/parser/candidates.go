@@ -12,7 +12,7 @@ type Candidate struct {
 
 func Normalize(rawLinks []string, allowed map[string]bool, max int) []Candidate {
 	seen := map[string]struct{}{}
-	out := make([]Candidate, 0, min(max, len(rawLinks)))
+	out := make([]Candidate, 0, len(rawLinks))
 	for _, link := range rawLinks {
 		link = strings.TrimSpace(link)
 		if link == "" {
@@ -30,13 +30,16 @@ func Normalize(rawLinks []string, allowed map[string]bool, max int) []Candidate 
 		}
 		seen[link] = struct{}{}
 		out = append(out, Candidate{Raw: link, Scheme: scheme})
-		if max > 0 && len(out) >= max {
-			break
-		}
 	}
 	sort.Slice(out, func(i, j int) bool {
+		if out[i].Scheme == out[j].Scheme {
+			return out[i].Raw < out[j].Raw
+		}
 		return out[i].Scheme < out[j].Scheme
 	})
+	if max > 0 && len(out) > max {
+		out = out[:max]
+	}
 	return out
 }
 
