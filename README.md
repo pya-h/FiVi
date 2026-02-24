@@ -48,6 +48,10 @@ Useful flags:
 
 ```bash
 ./fivi \
+  --engine xray \
+  --profile iran \
+  --xray-bin /path/to/xray \
+  --singbox-bin /path/to/sing-box \
   --no-tui \
   --workers 24 \
   --max-candidates 300 \
@@ -62,6 +66,23 @@ Useful flags:
 ```
 
 `--no-tui` forces plain log mode. In log mode, FiVi prints periodic one-line progress snapshots during candidate testing.
+
+Switch engine backend:
+
+```bash
+./fivi --engine xray
+./fivi --engine singbox --singbox-bin /path/to/sing-box
+```
+
+Profiles:
+
+```bash
+./fivi --profile iran     # default
+./fivi --profile global
+```
+
+- `iran` is tuned for restricted-network validation and requires blocked-target reachability (`x.com` + `youtube.com`).
+- `global` uses lighter defaults and fewer required blocked-target checks.
 
 Override sources:
 

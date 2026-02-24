@@ -52,13 +52,13 @@ Repository reviewed: `https://github.com/pydea-rs/v2finder`
 - [x] Milestone B (`B1`..`B5`)
 - [x] Milestone C (`C1`..`C4`)
 - [ ] Milestone D (`D1`..`D4`)
-- [ ] Milestone E (`E1`..`E3`)
+- [x] Milestone E (`E1`..`E3`)
 - [ ] Milestone F (`F1`..`F4`)
 
 ## Next Recommended Execution Start
-1. Start `D1` from `plans/TASKS.md` (introduce `EngineAdapter` and refactor xray integration behind it).
-2. Continue with `D2` sing-box adapter after interface boundary is stable.
-3. Add engine selection flags and validation in `D3`, then close Milestone D with `D4` feasibility note.
+1. Complete `D2` runtime verification with a real `sing-box` binary (`--engine singbox` discovery/connect/monitor smoke run).
+2. Start Milestone F with `F1` unit test expansion for decode/cooldown/scoring invariants.
+3. Continue with `F2` failover integration tests and `F3` throughput benchmark baseline.
 
 ## Context Update Protocol (mandatory)
 After each completed task, append a section to this file:
@@ -334,3 +334,126 @@ After each completed task, append a section to this file:
 - `go build ./...` passed.
 - Next task or blocker:
 - Milestone C completed (`C1`..`C4`). Next task: `D1` engine adapter refactor.
+
+## Task Update: D1 (2026-02-24)
+- Summary of changes:
+- Added new `internal/engines` abstraction with `Adapter`, `Instance`, and parsed metadata types.
+- Implemented `XrayAdapter` that wraps existing `internal/xray` build/start/binary checks.
+- Refactored discovery/connection flow to run through adapter boundary (`RunWithAdapter`, adapter-driven candidate start/probe path) while preserving existing xray behavior.
+- Updated engine event tests for adapter-aware worker execution and added adapter unit tests.
+- Files touched:
+- `internal/engines/adapter.go`
+- `internal/engines/xray.go`
+- `internal/engines/xray_test.go`
+- `internal/engine/engine.go`
+- `internal/engine/events_test.go`
+- Behavior impact:
+- Runtime execution now goes through an engine adapter interface instead of direct xray calls in core loop.
+- Current default behavior remains xray-backed and backward compatible.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- Next task: `D2` sing-box adapter implementation.
+
+## Task Update: D3 (2026-02-24)
+- Summary of changes:
+- Added engine selection and binary configuration flags: `--engine`, `--xray-bin`, `--singbox-bin`.
+- Normalized engine aliases (`sing-box` -> `singbox`) and added actionable flag validation errors for invalid engine selections / empty selected binary path.
+- Refactored runtime selection path to choose adapter and binary based on configured engine.
+- Added adapter selection tests and binary resolution tests in engine package.
+- Files touched:
+- `internal/config/config.go`
+- `internal/config/config_test.go`
+- `internal/engine/engine.go`
+- `internal/engine/adapter_select_test.go`
+- `main.go`
+- `plans/TASKS.md`
+- Behavior impact:
+- CLI can now select backend engine mode at startup.
+- Invalid engine combinations fail fast with explicit, actionable error messages.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- `go run . --help` verified new flags are exposed.
+- `go run . --engine nope` verified actionable validation error.
+- Next task or blocker:
+- `D2` implementation is in place but still needs runtime verification with an installed `sing-box` binary to satisfy task done criteria.
+
+## Task Update: D4 (2026-02-24)
+- Summary of changes:
+- Evaluated optional `clash-meta` adapter feasibility against current priorities and maintenance budget.
+- Decision: explicitly deferred `clash-meta` adapter for now; do not block delivery on it.
+- Rationale:
+- Primary immediate value is xray + sing-box parity; adding clash-meta now would increase test matrix and long-term maintenance without near-term priority gain.
+- Files touched:
+- `plans/TASKS.md`
+- `plans/CONTEXT.md`
+- Behavior impact:
+- No runtime behavior change; roadmap is clarified and milestone tracking now treats clash-meta as deferred by decision.
+- Validation performed:
+- N/A (planning/decision update only).
+- Next task or blocker:
+- Remaining Milestone D blocker is `D2` runtime verification with a real `sing-box` binary.
+
+## Task Update: E1 (2026-02-24)
+- Summary of changes:
+- Added profile package with named profile settings and resolver (`iran` default, `global` alternate).
+- Added `--profile` flag and profile validation with actionable errors for unknown profile names.
+- Wired profile-based defaults for probe targets/timeouts/min-success/retry-backoff/monitor interval while preserving explicit CLI flag override precedence.
+- Updated startup log to include selected profile.
+- Added profile unit tests and config coverage for normalization/env behavior.
+- Files touched:
+- `internal/profile/profile.go`
+- `internal/profile/profile_test.go`
+- `internal/config/config.go`
+- `internal/config/config_test.go`
+- `main.go`
+- `plans/TASKS.md`
+- Behavior impact:
+- App now starts with `iran` profile by default unless overridden via `--profile`.
+- Users can switch to supported profiles without changing multiple individual flags.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- `go run . --help` verified `--profile` flag exposure.
+- `go run . --profile unknown` verified actionable validation error.
+- Next task or blocker:
+- Next task: `E2` profile-specific tuning and target strategy refinement.
+
+## Task Update: E2 (2026-02-24)
+- Summary of changes:
+- Extended profile settings with explicit required-target tokens and tuned `iran` defaults for timeout/retry behavior.
+- Replaced hardcoded banned-site qualification checks with profile-driven required-target matching logic.
+- Added engine tests for required-target matching behavior.
+- Files touched:
+- `internal/profile/profile.go`
+- `internal/profile/profile_test.go`
+- `internal/config/config.go`
+- `internal/engine/engine.go`
+- `internal/engine/required_targets_test.go`
+- Behavior impact:
+- Probe qualification strategy is now profile-driven instead of hardcoded to specific domains.
+- `iran` profile now enforces blocked-target reachability through profile config data.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- Next task: `E3` profile documentation in README.
+
+## Task Update: E3 (2026-02-24)
+- Summary of changes:
+- Added README profile documentation with one-flag usage examples and profile rationale.
+- Updated useful flag examples to include profile selection in standard run commands.
+- Files touched:
+- `README.md`
+- `plans/TASKS.md`
+- `plans/CONTEXT.md`
+- Behavior impact:
+- Users can discover and switch operational profiles directly from docs.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- `go run . --help` verified `--profile` flag exposure.
+- Next task or blocker:
+- Milestone E completed (`E1`..`E3`). Remaining blocker before full Milestone D close: runtime verification for `D2` with real `sing-box` binary.

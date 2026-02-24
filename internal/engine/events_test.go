@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"fivi/internal/config"
+	"fivi/internal/engines"
 	"fivi/internal/parser"
 )
 
@@ -35,7 +36,7 @@ func TestTestOneEmitsParseFailureEvents(t *testing.T) {
 	outcome := testOne(context.Background(), cfg, parser.Candidate{
 		Raw:    "not-a-valid-link",
 		Scheme: "vmess",
-	}, 3, events)
+	}, 3, events, engines.NewXrayAdapter(), "xray")
 
 	if outcome.Reason != FailureReasonParseCandidate {
 		t.Fatalf("unexpected outcome reason: got=%s want=%s", outcome.Reason, FailureReasonParseCandidate)

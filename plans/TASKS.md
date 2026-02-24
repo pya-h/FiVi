@@ -68,7 +68,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Done when: users can see progress without TUI.
 
 ## Milestone D: Engine Abstraction
-15. `D1` Add `EngineAdapter` interface and refactor xray integration.
+15. [x] `D1` Add `EngineAdapter` interface and refactor xray integration.
 - Output: xray runs via adapter.
 - Done when: existing behavior preserved with `--engine xray`.
 
@@ -76,24 +76,24 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: config builder + process wrapper.
 - Done when: `--engine singbox` can discover/connect/monitor.
 
-17. `D3` Add engine selection and binary flags.
+17. [x] `D3` Add engine selection and binary flags.
 - Output: `--engine`, `--xray-bin`, `--singbox-bin`.
 - Done when: invalid combinations return actionable errors.
 
-18. `D4` Evaluate optional `clash-meta` adapter feasibility.
+18. [x] `D4` Evaluate optional `clash-meta` adapter feasibility.
 - Output: short decision note in `plans/CONTEXT.md`.
 - Done when: either adapter is implemented or explicitly deferred.
 
 ## Milestone E: Restricted-Network Profile
-19. `E1` Add profile system and set `iran` as default.
+19. [x] `E1` Add profile system and set `iran` as default.
 - Output: profile config package and defaults.
 - Done when: app starts with `iran` profile unless overridden.
 
-20. `E2` Tune iran probe targets/timeouts/retries/backoff.
+20. [x] `E2` Tune iran probe targets/timeouts/retries/backoff.
 - Output: profile-specific probe strategy.
 - Done when: target logic is profile-driven, not hardcoded only.
 
-21. `E3` Add profile docs in README.
+21. [x] `E3` Add profile docs in README.
 - Output: usage examples and rationale.
 - Done when: users can switch profile with one flag.
 

@@ -76,14 +76,19 @@ func Run(ctx context.Context, cfg config.AppConfig) error {
 }
 
 func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent) error {
-	return RunWithAdapter(ctx, cfg, events, defaultAdapter())
+	adapter, err := adapterFromConfig(cfg)
+	if err != nil {
+		return err
+	}
+	return RunWithAdapter(ctx, cfg, events, adapter)
 }
 
 func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent, adapter engines.Adapter) error {
 	if adapter == nil {
-		adapter = defaultAdapter()
+		adapter = engines.NewXrayAdapter()
 	}
-	if err := adapter.EnsureBinary(cfg.XRAYBin); err != nil {
+	engineBin := binaryForAdapter(cfg, adapter)
+	if err := adapter.EnsureBinary(engineBin); err != nil {
 		return err
 	}
 	health := sources.NewHealthTracker(cfg.BootstrapSources)
@@ -95,7 +100,7 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 		default:
 		}
 
-		ranked, err := discoverAndRank(ctx, cfg, health, events, adapter)
+		ranked, err := discoverAndRank(ctx, cfg, health, events, adapter, engineBin)
 		if err != nil {
 			logx.Errorf("discovery failed: %v", err)
 			sleepWithCancel(ctx, cfg.RetryBackoff)
@@ -107,7 +112,7 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 			continue
 		}
 
-		if err := connectAndMonitor(ctx, cfg, ranked, adapter); err != nil {
+		if err := connectAndMonitor(ctx, cfg, ranked, adapter, engineBin); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
 			}
@@ -118,7 +123,7 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 	}
 }
 
-func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker, events chan<- WorkerEvent) ([]Ranked, error) {
+func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker, events chan<- WorkerEvent, adapter engines.Adapter, engineBin string) ([]Ranked, error) {
 	roundSources := selectSourcesForRound(cfg.BootstrapSources, health, time.Now())
 	logx.Infof("fetching subscriptions from %d/%d sources", len(roundSources), len(cfg.BootstrapSources))
 
@@ -152,7 +157,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	}
 	logx.Infof("testing %d candidates with %d workers", len(cands), cfg.Workers)
 
-	validation := validateCandidates(ctx, cfg, cands, events, adapter)
+	validation := validateCandidates(ctx, cfg, cands, events, adapter, engineBin)
 	if len(validation.Working) == 0 {
 		if err := writeCandidateBuckets(nil, validation.Probable); err != nil {
 			logx.Warnf("failed to write candidate buckets: %v", err)
@@ -180,7 +185,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	return ranked, nil
 }
 
-func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate, events chan<- WorkerEvent, adapter engines.Adapter) validationSummary {
+func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate, events chan<- WorkerEvent, adapter engines.Adapter, engineBin string) validationSummary {
 	workers := cfg.Workers
 	if workers < 1 {
 		workers = 1
@@ -203,7 +208,7 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 					if !ok {
 						return
 					}
-					outcome := testOne(ctx, cfg, c, workerID, events, adapter)
+					outcome := testOne(ctx, cfg, c, workerID, events, adapter, engineBin)
 					select {
 					case outcomes <- outcome:
 					case <-ctx.Done():
@@ -256,7 +261,7 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 	return summary
 }
 
-func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, workerID int, events chan<- WorkerEvent) candidateOutcome {
+func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, workerID int, events chan<- WorkerEvent, adapter engines.Adapter, engineBin string) candidateOutcome {
 	candidateCtx, cancel := context.WithTimeout(ctx, effectiveCandidateTimeout(cfg))
 	defer cancel()
 
@@ -283,7 +288,7 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 			emitDone(WorkerStatusFailed, FailureReasonReserveAddr, err, attempt)
 			return candidateOutcome{Raw: c.Raw, Reason: FailureReasonReserveAddr}
 		}
-		configJSON, parsed, err := xray.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr)
+		configJSON, parsed, err := adapter.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr)
 		if err != nil {
 			emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusFailed, attempt, FailureReasonParseCandidate, err, parseStarted)
 			emitDone(WorkerStatusFailed, FailureReasonParseCandidate, err, attempt)
@@ -293,7 +298,7 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 
 		spawnStarted := time.Now()
 		emitStageEvent(events, workerID, c.Raw, WorkerStageSpawn, WorkerStatusRunning, attempt, "", nil, spawnStarted)
-		inst, err := xray.Start(candidateCtx, cfg.XRAYBin, configJSON, parsed.Name)
+		inst, err := adapter.Start(candidateCtx, engineBin, configJSON, parsed.Name)
 		if err != nil {
 			lastReason = FailureReasonEngineStart
 			emitStageEvent(events, workerID, c.Raw, WorkerStageSpawn, WorkerStatusFailed, attempt, FailureReasonEngineStart, err, spawnStarted)
@@ -312,8 +317,6 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 		res := probe.CheckThroughSOCKS(candidateCtx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
 		inst.Stop()
 		if isProbeQualified(cfg, res) {
-			latMs := float64(max(int(res.AvgLatency.Milliseconds()), 1))
-			score := float64(res.Successes*1000) - latMs
 			ranked := Ranked{
 				Raw:         c.Raw,
 				Scheme:      c.Scheme,
@@ -321,8 +324,8 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 				Successes:   res.Successes,
 				TargetCount: res.TargetCount,
 				AvgLatency:  res.AvgLatency,
-				BannedOK:    hasRequiredBannedTargetsOK(res.Targets, cfg.Targets),
-				Score:       score,
+				BannedOK:    hasRequiredTargetsOK(res.Targets, cfg.RequiredTargets),
+				Score:       scoreCandidate(res.Successes, res.AvgLatency),
 			}
 			emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusOK, attempt, "", nil, probeStarted)
 			emitDone(WorkerStatusOK, "", nil, attempt)
@@ -403,10 +406,10 @@ func isListeningAddr(addr string) bool {
 	return true
 }
 
-func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranked) error {
+func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranked, adapter engines.Adapter, engineBin string) error {
 	for i := 0; i < len(ranked); i++ {
 		cand := ranked[i]
-		inst, initialProbe, initialSpeed, err := startCandidate(ctx, cfg, cand.Raw, cfg.ListenSocksAddr, cfg.ListenHTTPAddr)
+		inst, initialProbe, initialSpeed, err := startCandidate(ctx, cfg, cand.Raw, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, adapter, engineBin)
 		if err != nil {
 			logx.Warnf("connect failed for %s: %v", displayName(cand), err)
 			continue
@@ -458,12 +461,12 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 	}
 }
 
-func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string) (*xray.Instance, probe.Result, float64, error) {
-	cfgJSON, _, err := xray.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr)
+func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string, adapter engines.Adapter, engineBin string) (engines.Instance, probe.Result, float64, error) {
+	cfgJSON, _, err := adapter.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr)
 	if err != nil {
 		return nil, probe.Result{}, 0, err
 	}
-	inst, err := xray.Start(ctx, cfg.XRAYBin, cfgJSON, "active")
+	inst, err := adapter.Start(ctx, engineBin, cfgJSON, "active")
 	if err != nil {
 		return nil, probe.Result{}, 0, err
 	}
@@ -491,7 +494,7 @@ func isProbeQualified(cfg config.AppConfig, res probe.Result) bool {
 	if res.Successes < minSuccess {
 		return false
 	}
-	return hasRequiredBannedTargetsOK(res.Targets, cfg.Targets)
+	return hasRequiredTargetsOK(res.Targets, cfg.RequiredTargets)
 }
 
 func sleepWithCancel(ctx context.Context, d time.Duration) {
@@ -525,37 +528,28 @@ func reserveAddr() (string, error) {
 	return addr, nil
 }
 
-func hasRequiredBannedTargetsOK(results []probe.TargetResult, expectedTargets []string) bool {
-	requireX := hasExpected(expectedTargets, "x.com")
-	requireY := hasExpected(expectedTargets, "youtube.com")
-	if !requireX && !requireY {
+func hasRequiredTargetsOK(results []probe.TargetResult, requiredTokens []string) bool {
+	if len(requiredTokens) == 0 {
 		return true
 	}
-	var xOK, yOK bool
-	for _, r := range results {
-		if strings.Contains(r.URL, "x.com") && r.OK {
-			xOK = true
+
+	for _, token := range requiredTokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
 		}
-		if strings.Contains(r.URL, "youtube.com") && r.OK {
-			yOK = true
+		ok := false
+		for _, r := range results {
+			if strings.Contains(r.URL, token) && r.OK {
+				ok = true
+				break
+			}
 		}
-	}
-	if requireX && !xOK {
-		return false
-	}
-	if requireY && !yOK {
-		return false
+		if !ok {
+			return false
+		}
 	}
 	return true
-}
-
-func hasExpected(targets []string, token string) bool {
-	for _, t := range targets {
-		if strings.Contains(t, token) {
-			return true
-		}
-	}
-	return false
 }
 
 func displayName(r Ranked) string {
@@ -900,6 +894,35 @@ func formatTime(t time.Time) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
+}
+
+func adapterFromConfig(cfg config.AppConfig) (engines.Adapter, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.Engine)) {
+	case "", "xray":
+		return engines.NewXrayAdapter(), nil
+	case "singbox", "sing-box":
+		return engines.NewSingboxAdapter(), nil
+	default:
+		return nil, fmt.Errorf("unsupported engine %q (supported: xray, singbox)", cfg.Engine)
+	}
+}
+
+func binaryForAdapter(cfg config.AppConfig, adapter engines.Adapter) string {
+	name := "xray"
+	if adapter != nil {
+		name = strings.ToLower(strings.TrimSpace(adapter.Name()))
+	}
+	switch name {
+	case "singbox", "sing-box":
+		return cfg.SingboxBin
+	default:
+		return cfg.XRAYBin
+	}
+}
+
+func scoreCandidate(successes int, avgLatency time.Duration) float64 {
+	latMs := float64(max(int(avgLatency.Milliseconds()), 1))
+	return float64(successes*1000) - latMs
 }
 
 func max(a, b int) int {

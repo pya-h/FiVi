@@ -29,7 +29,7 @@ func main() {
 		logx.Infof("ui mode=log (non-interactive terminal)")
 	}
 
-	logx.Infof("fivi started with %d sources, workers=%d", len(cfg.BootstrapSources), cfg.Workers)
+	logx.Infof("fivi started with engine=%s, profile=%s, sources=%d, workers=%d", cfg.Engine, cfg.Profile, len(cfg.BootstrapSources), cfg.Workers)
 	if err := runWithMode(ctx, cfg, mode); err != nil && !errors.Is(err, context.Canceled) {
 		logx.Errorf("fatal: %v", err)
 		os.Exit(1)

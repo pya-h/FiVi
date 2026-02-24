@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"reflect"
 	"testing"
 
@@ -13,5 +14,45 @@ func TestDefaultSourcesUsesRegistry(t *testing.T) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("default sources do not match registry\n got=%v\nwant=%v", got, want)
+	}
+}
+
+func TestNormalizeEngine(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "xray", want: "xray"},
+		{in: "XRAY", want: "xray"},
+		{in: "sing-box", want: "singbox"},
+		{in: "singbox", want: "singbox"},
+	}
+
+	for _, tc := range tests {
+		if got := normalizeEngine(tc.in); got != tc.want {
+			t.Fatalf("normalizeEngine(%q)=%q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestDefaultSingboxBinEnvOverride(t *testing.T) {
+	const key = "FIVI_SINGBOX_BIN"
+	original, hadOriginal := os.LookupEnv(key)
+	t.Cleanup(func() {
+		if hadOriginal {
+			_ = os.Setenv(key, original)
+			return
+		}
+		_ = os.Unsetenv(key)
+	})
+
+	_ = os.Unsetenv(key)
+	if got := defaultSingboxBin(); got != "sing-box" {
+		t.Fatalf("defaultSingboxBin()=%q, want sing-box", got)
+	}
+
+	_ = os.Setenv(key, "/tmp/sbox")
+	if got := defaultSingboxBin(); got != "/tmp/sbox" {
+		t.Fatalf("defaultSingboxBin() env override failed, got=%q", got)
 	}
 }
