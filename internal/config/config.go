@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"fivi/internal/sources"
 )
 
 type AppConfig struct {
@@ -15,6 +17,8 @@ type AppConfig struct {
 	Workers          int
 	MaxCandidates    int
 	TopCount         int
+	CandidateTimeout time.Duration
+	StartupTimeout   time.Duration
 	ProbeTimeout     time.Duration
 	ProbeMinSuccess  int
 	MonitorInterval  time.Duration
@@ -35,6 +39,8 @@ func ParseFlags() AppConfig {
 		workers          = flag.Int("workers", max(6, runtime.NumCPU()*2), "parallel workers for candidate testing")
 		maxCandidates    = flag.Int("max-candidates", 250, "max unique candidates to test per round")
 		topCount         = flag.Int("top", 5, "number of top ranked candidates to print")
+		candidateTimeout = flag.Duration("candidate-timeout", 24*time.Second, "timeout budget per candidate across all attempts")
+		startupTimeout   = flag.Duration("startup-timeout", 4*time.Second, "max wait for local proxy listeners to become ready after engine start")
 		probeTimeout     = flag.Duration("probe-timeout", 7*time.Second, "timeout per probe request")
 		minProbeSuccess  = flag.Int("min-success", 2, "minimum successful target probes required")
 		monitorInterval  = flag.Duration("monitor-interval", 45*time.Second, "interval between health checks")
@@ -60,6 +66,8 @@ func ParseFlags() AppConfig {
 		Workers:          *workers,
 		MaxCandidates:    *maxCandidates,
 		TopCount:         *topCount,
+		CandidateTimeout: *candidateTimeout,
+		StartupTimeout:   *startupTimeout,
 		ProbeTimeout:     *probeTimeout,
 		ProbeMinSuccess:  *minProbeSuccess,
 		MonitorInterval:  *monitorInterval,
@@ -89,13 +97,7 @@ func DefaultTargets() []string {
 }
 
 func DefaultSources() []string {
-	// Keep this list short and user-overridable because free lists change often.
-	return []string{
-		"https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge_base64.txt",
-		"https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/vless",
-		"https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/vmess",
-		"https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/trojan",
-	}
+	return sources.DefaultURLs()
 }
 
 func splitCSV(v string) []string {

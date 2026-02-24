@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -66,6 +67,11 @@ func DecodeSubscription(raw []byte) ([]string, error) {
 	links := parseLines(text)
 	if hasSupportedScheme(links) {
 		return links, nil
+	}
+
+	// Some feeds provide JSON arrays/objects containing link strings.
+	if jsonLinks := extractLinksFromJSON(text); len(jsonLinks) > 0 {
+		return jsonLinks, nil
 	}
 
 	// Many subscriptions are either plain lines or one base64 blob, sometimes
@@ -142,13 +148,78 @@ func compactBase64Text(s string) string {
 
 func hasSupportedScheme(links []string) bool {
 	for _, l := range links {
-		v := strings.ToLower(strings.TrimSpace(l))
-		if strings.HasPrefix(v, "vmess://") ||
-			strings.HasPrefix(v, "vless://") ||
-			strings.HasPrefix(v, "trojan://") ||
-			strings.HasPrefix(v, "ss://") {
+		if isSupportedLink(l) {
 			return true
 		}
 	}
 	return false
+}
+
+func extractLinksFromJSON(text string) []string {
+	var payload any
+	if err := json.Unmarshal([]byte(text), &payload); err != nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 256)
+	var walk func(v any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for _, value := range x {
+				walk(value)
+			}
+		case []any:
+			for _, item := range x {
+				walk(item)
+			}
+		case string:
+			for _, link := range extractSupportedLinksFromText(x) {
+				if _, ok := seen[link]; ok {
+					continue
+				}
+				seen[link] = struct{}{}
+				out = append(out, link)
+			}
+		}
+	}
+
+	walk(payload)
+	return out
+}
+
+func extractSupportedLinksFromText(text string) []string {
+	lines := parseLines(text)
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if isSupportedLink(line) {
+			out = append(out, strings.TrimSpace(line))
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+
+	compact := compactBase64Text(text)
+	if maybeBase64Blob(compact) {
+		decoded, err := tryDecodeBase64(compact)
+		if err == nil {
+			decodedLines := parseLines(decoded)
+			for _, line := range decodedLines {
+				if isSupportedLink(line) {
+					out = append(out, strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+	return out
+}
+
+func isSupportedLink(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
+	return strings.HasPrefix(v, "vmess://") ||
+		strings.HasPrefix(v, "vless://") ||
+		strings.HasPrefix(v, "trojan://") ||
+		strings.HasPrefix(v, "ss://")
 }

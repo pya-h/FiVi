@@ -33,3 +33,17 @@ func TestDecodeSubscriptionKeepsPlainTextWhenNotSupportedSchemes(t *testing.T) {
 		t.Fatalf("expected 2 lines, got %d (%v)", len(links), links)
 	}
 }
+
+func TestDecodeSubscriptionJSONPayload(t *testing.T) {
+	raw := `{"items":[{"url":"vmess://abc"},{"meta":{"link":"vless://def"}}],"other":"noop"}`
+	links, err := DecodeSubscription([]byte(raw))
+	if err != nil {
+		t.Fatalf("DecodeSubscription error: %v", err)
+	}
+	if len(links) != 2 {
+		t.Fatalf("expected 2 links, got %d (%v)", len(links), links)
+	}
+	if links[0] != "vmess://abc" || links[1] != "vless://def" {
+		t.Fatalf("unexpected links: %v", links)
+	}
+}
