@@ -51,14 +51,14 @@ Repository reviewed: `https://github.com/pydea-rs/v2finder`
 - [x] Milestone A (`A1`..`A5`)
 - [x] Milestone B (`B1`..`B5`)
 - [x] Milestone C (`C1`..`C4`)
-- [ ] Milestone D (`D1`..`D4`)
+- [x] Milestone D (`D1`..`D4`)
 - [x] Milestone E (`E1`..`E3`)
-- [ ] Milestone F (`F1`..`F4`)
+- [x] Milestone F (`F1`..`F4`)
 
 ## Next Recommended Execution Start
-1. Complete `D2` runtime verification with a real `sing-box` binary (`--engine singbox` discovery/connect/monitor smoke run).
-2. Start Milestone F with `F1` unit test expansion for decode/cooldown/scoring invariants.
-3. Continue with `F2` failover integration tests and `F3` throughput benchmark baseline.
+1. All planned milestones are complete (`A1`..`F4`).
+2. Optional next work: prune stale default sources with persistent 404s and add replacement feeds.
+3. Optional next work: add periodic CI smoke profiles for both `xray` and `singbox`.
 
 ## Context Update Protocol (mandatory)
 After each completed task, append a section to this file:
@@ -457,3 +457,130 @@ After each completed task, append a section to this file:
 - `go run . --help` verified `--profile` flag exposure.
 - Next task or blocker:
 - Milestone E completed (`E1`..`E3`). Remaining blocker before full Milestone D close: runtime verification for `D2` with real `sing-box` binary.
+
+## Task Update: F1 (2026-02-24)
+- Summary of changes:
+- Added explicit scoring function (`scoreCandidate`) and deterministic scoring invariant tests.
+- Existing decode and cooldown unit coverage from earlier milestones remains intact; scoring now has dedicated coverage.
+- Files touched:
+- `internal/engine/engine.go`
+- `internal/engine/scoring_test.go`
+- `plans/TASKS.md`
+- `plans/CONTEXT.md`
+- Behavior impact:
+- No functional behavior change; scoring logic is now unit-tested directly for monotonic expectations.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- Next task: `F2` integration tests for failover state machine.
+
+## Task Update: F2 (2026-02-24)
+- Summary of changes:
+- Added failover integration test with mocked adapter/probe/readiness hooks to reproducibly validate transition from failed primary candidate to next candidate.
+- Introduced test-time function indirection for probe/readiness/address-reservation calls to enable deterministic state-machine tests.
+- Files touched:
+- `internal/engine/engine.go`
+- `internal/engine/failover_integration_test.go`
+- `plans/TASKS.md`
+- `plans/CONTEXT.md`
+- Behavior impact:
+- No runtime behavior change; failover path now has explicit integration coverage in tests.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- Next task: `F3` candidate throughput benchmark.
+
+## Task Update: F3 (2026-02-24)
+- Summary of changes:
+- Added candidate-throughput benchmark for validation worker pipeline using mocked adapter/probe/readiness to measure framework overhead deterministically.
+- Captured baseline benchmark numbers.
+- Files touched:
+- `internal/engine/benchmark_test.go`
+- `internal/engine/engine.go`
+- `plans/TASKS.md`
+- `plans/CONTEXT.md`
+- Behavior impact:
+- Adds repeatable performance measurement for candidate-validation throughput.
+- Validation performed:
+- `go test ./internal/engine -run ^$ -bench BenchmarkValidateCandidatesThroughput -benchmem` passed.
+- Baseline report:
+- `BenchmarkValidateCandidatesThroughput-8`: `627470 ns/op`, `93879 B/op`, `1024 allocs/op` (120 candidates per benchmark iteration).
+- Next task or blocker:
+- Next task: `F4` docs and release notes finalization.
+
+## Task Update: F4 (2026-02-24)
+- Summary of changes:
+- Updated README with engine/profile examples and migration notes covering new flags and output artifacts.
+- Finalized release-facing documentation updates for current milestones.
+- Files touched:
+- `README.md`
+- `plans/TASKS.md`
+- `plans/CONTEXT.md`
+- Behavior impact:
+- New operational modes and migration details are documented for users upgrading from earlier CLI behavior.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- Milestone F completed (`F1`..`F4`). Remaining open implementation blocker across roadmap: `D2` runtime validation with a real `sing-box` binary.
+
+## Task Update: D2 (2026-02-25)
+- Summary of changes:
+- Completed runtime verification for `sing-box` adapter with real binary (`sing-box 1.12.22`).
+- Performed end-to-end smoke run with `--engine singbox` and verified discovery, candidate validation, active connect, and monitor status updates.
+- First smoke run showed local port conflict on default `127.0.0.1:10808`; rerun on free ports (`127.0.0.1:19080`, `127.0.0.1:19081`) validated full flow successfully.
+- Files touched:
+- `plans/TASKS.md`
+- `plans/CONTEXT.md`
+- `output/smoke_singbox.log`
+- `output/smoke_singbox_ports19080.log`
+- Behavior impact:
+- Milestone D is now fully complete; `--engine singbox` is runtime-verified for discover/connect/monitor in this environment.
+- Validation performed:
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Manual smoke run: `go run . --engine singbox --singbox-bin ./.tools/singbox/sing-box-1.12.22-linux-amd64/sing-box --no-tui --workers 8 --max-candidates 60 --top 3 --socks-addr 127.0.0.1:19080 --http-addr 127.0.0.1:19081`.
+- Observed evidence:
+- discovery from 30 sources with candidate testing summary (`processed=60`, `working=7`, `probable=11`).
+- active connect success: `[OK] ... socks=127.0.0.1:19080 http=127.0.0.1:19081 pid=...`.
+- monitor success tick: `[OK] ... uptime=46s ... success=3/3`.
+- Next task or blocker:
+- Milestone D completed (`D1`..`D4`); no remaining open roadmap tasks in `plans/TASKS.md`.
+
+## Maintenance Update: Benchmark Logging Fix (2026-02-25)
+- Summary of changes:
+- Added `logx.SetOutput(io.Writer)` to allow temporary output redirection.
+- Muted logging inside throughput benchmark to remove log I/O noise from benchmark signal.
+- Files touched:
+- `internal/logx/logx.go`
+- `internal/engine/benchmark_test.go`
+- Behavior impact:
+- No runtime behavior change for normal CLI usage.
+- Benchmark output is now concise and throughput measurements are less skewed by logging overhead.
+- Validation performed:
+- `go test ./...` passed.
+- `go test ./internal/engine -run ^$ -bench BenchmarkValidateCandidatesThroughput -benchmem` passed.
+- New baseline report:
+- `BenchmarkValidateCandidatesThroughput-8`: `261620 ns/op`, `93795 B/op`, `1023 allocs/op`.
+- Next task or blocker:
+- None.
+
+## Maintenance Update: Listen Address Preflight (2026-02-25)
+- Summary of changes:
+- Added startup preflight validation for active listen addresses (`--socks-addr`, `--http-addr`) before entering discovery loop.
+- Added actionable error text when configured ports are already occupied.
+- Added unit tests covering available and conflict cases.
+- Files touched:
+- `internal/engine/engine.go`
+- `internal/engine/listenaddr_test.go`
+- Behavior impact:
+- Prevents long rediscovery loops when local proxy ports are already in use.
+- Startup now fails fast with explicit guidance to change address flags or free the conflicting port.
+- Validation performed:
+- `go test ./internal/engine -run TestEnsureListenAddrsAvailable -v` passed.
+- `go test ./...` passed.
+- `go build ./...` passed.
+- Next task or blocker:
+- None.

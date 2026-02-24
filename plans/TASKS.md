@@ -72,7 +72,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: xray runs via adapter.
 - Done when: existing behavior preserved with `--engine xray`.
 
-16. `D2` Add `sing-box` adapter.
+16. [x] `D2` Add `sing-box` adapter.
 - Output: config builder + process wrapper.
 - Done when: `--engine singbox` can discover/connect/monitor.
 
@@ -98,18 +98,18 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Done when: users can switch profile with one flag.
 
 ## Milestone F: Quality and Release
-22. `F1` Add unit tests for source decode, cooldown, and scoring.
+22. [x] `F1` Add unit tests for source decode, cooldown, and scoring.
 - Output: deterministic tests.
 - Done when: new core logic has coverage.
 
-23. `F2` Add integration tests for failover state machine.
+23. [x] `F2` Add integration tests for failover state machine.
 - Output: mocked engine/probe tests.
 - Done when: failover path is reproducibly validated.
 
-24. `F3` Add benchmark for candidate throughput.
+24. [x] `F3` Add benchmark for candidate throughput.
 - Output: benchmark command and baseline numbers.
 - Done when: baseline performance report is documented.
 
-25. `F4` Final docs and release notes.
+25. [x] `F4` Final docs and release notes.
 - Output: updated README + migration notes.
 - Done when: all new flags and behavior are documented.

@@ -2,6 +2,7 @@ package logx
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"sync"
@@ -23,6 +24,23 @@ func Warnf(format string, args ...any) {
 
 func Errorf(format string, args ...any) {
 	print("ERROR", format, args...)
+}
+
+func SetOutput(w io.Writer) func() {
+	if w == nil {
+		w = io.Discard
+	}
+
+	mu.Lock()
+	prev := l.Writer()
+	l.SetOutput(w)
+	mu.Unlock()
+
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		l.SetOutput(prev)
+	}
 }
 
 func print(level, format string, args ...any) {

@@ -1,0 +1,129 @@
+2026-02-25 02:49:31 [INFO] ui mode=log (--no-tui)
+2026-02-25 02:49:31 [INFO] fivi started with engine=xray, profile=iran, sources=30, workers=8
+2026-02-25 02:49:31 [INFO] fetching subscriptions from 30/30 sources
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt: status 404
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray (99 links)
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub (11 links)
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2: status 404
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/ripaojiedian/freenode/main/sub (16 links)
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt (140 links)
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt (5162 links)
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/all3: status 404
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/ts-sf/fly/main/v2 (71 links)
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/freefq/free/master/v2 (15 links)
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray (63 links)
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/1/config.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/2/config.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/3/config.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://sub.pmsub.me/base64: Get "https://sub.pmsub.me/base64": net/http: TLS handshake timeout
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/tbbatbb/Proxy/master/dist/v2ray.config.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/changfengoss/pub/main/data/2024_01_17/cvjOPc.txt: status 404
+2026-02-25 02:49:48 [INFO] source ok https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt (26 links)
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription1.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription2.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription3.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/pojokan-id/v2ray-free/main/v2ray: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/yebekhe/v2rayfree/main/v2: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/freev2fly/freev2fly.github.io/gh-pages/_data/freeservers.json: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/wzz1000/ClashR_for_Windows_Alpha/main/v2ray.config: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/ALX-003/V2RAY-XRAYS-2024/main/V2RAY-XVLESS-XVmess/V2RAY-VMESS-VLESS-TROJAN-2024.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/FoxiYao/freesub/main/v2ray: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/roshan9/v2ray/main/v2ray: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/anam2812/v2ray-servers/main/v2ray-servers.txt: status 404
+2026-02-25 02:49:48 [WARN] source failed https://raw.githubusercontent.com/aliaraz/v2ray-config/main/config.txt: status 404
+2026-02-25 02:49:48 [INFO] source health: attempted=30/30 | successes=9 | failures=21 | yield=5603 | cooling_down=0
+2026-02-25 02:49:48 [INFO] source health issue 1: https://raw.githubusercontent.com/ALX-003/V2RAY-XRAYS-2024/main/V2RAY-XVLESS-XVmess/V2RAY-VMESS-VLESS-TROJAN-2024.txt | ok=0 fail=1 streak=1 yield=0 last_ok=never cooldown=none
+2026-02-25 02:49:48 [INFO] source health issue 2: https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/1/config.txt | ok=0 fail=1 streak=1 yield=0 last_ok=never cooldown=none
+2026-02-25 02:49:48 [INFO] source health issue 3: https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/2/config.txt | ok=0 fail=1 streak=1 yield=0 last_ok=never cooldown=none
+2026-02-25 02:49:48 [INFO] testing 60 candidates with 8 workers
+2026-02-25 02:49:49 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:49:51 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:49:53 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:49:55 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:49:57 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:49:59 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:50:01 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:50:03 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:50:05 [INFO] progress snapshot: processed=3 working=0 probable=0 failed=3 running=8 stages=probe=8
+2026-02-25 02:50:07 [INFO] progress snapshot: processed=3 working=0 probable=0 failed=3 running=8 stages=probe=8
+2026-02-25 02:50:09 [INFO] progress snapshot: processed=3 working=0 probable=0 failed=3 running=8 stages=probe=8
+2026-02-25 02:50:11 [INFO] progress snapshot: processed=3 working=0 probable=0 failed=3 running=8 stages=probe=8
+2026-02-25 02:50:13 [INFO] progress snapshot: processed=8 working=0 probable=0 failed=8 running=8 stages=probe=8
+2026-02-25 02:50:15 [INFO] progress snapshot: processed=8 working=0 probable=0 failed=8 running=8 stages=probe=8
+2026-02-25 02:50:17 [INFO] progress snapshot: processed=8 working=0 probable=0 failed=8 running=8 stages=probe=8
+2026-02-25 02:50:19 [INFO] progress snapshot: processed=9 working=0 probable=0 failed=9 running=8 stages=spawn=1,probe=7
+2026-02-25 02:50:21 [INFO] progress snapshot: processed=10 working=0 probable=0 failed=10 running=8 stages=probe=8
+2026-02-25 02:50:23 [INFO] progress snapshot: processed=10 working=0 probable=0 failed=10 running=8 stages=probe=8
+2026-02-25 02:50:25 [INFO] progress snapshot: processed=10 working=0 probable=0 failed=10 running=8 stages=probe=8
+2026-02-25 02:50:27 [INFO] progress snapshot: processed=10 working=0 probable=0 failed=10 running=8 stages=probe=8
+2026-02-25 02:50:29 [INFO] progress snapshot: processed=13 working=0 probable=0 failed=13 running=8 stages=probe=8
+2026-02-25 02:50:31 [INFO] progress snapshot: processed=14 working=1 probable=0 failed=13 running=8 stages=spawn=1,probe=7
+2026-02-25 02:50:33 [INFO] progress snapshot: processed=14 working=1 probable=0 failed=13 running=8 stages=probe=8
+2026-02-25 02:50:35 [INFO] progress snapshot: processed=14 working=1 probable=0 failed=13 running=8 stages=probe=8
+2026-02-25 02:50:37 [INFO] progress snapshot: processed=17 working=1 probable=0 failed=16 running=8 stages=probe=8
+2026-02-25 02:50:39 [INFO] progress snapshot: processed=17 working=1 probable=0 failed=16 running=8 stages=probe=8
+2026-02-25 02:50:41 [INFO] progress snapshot: processed=17 working=1 probable=0 failed=16 running=8 stages=probe=8
+2026-02-25 02:50:43 [INFO] progress snapshot: processed=18 working=1 probable=0 failed=17 running=8 stages=spawn=1,probe=7
+2026-02-25 02:50:45 [INFO] progress snapshot: processed=19 working=1 probable=0 failed=18 running=8 stages=probe=8
+2026-02-25 02:50:47 [INFO] progress snapshot: processed=19 working=1 probable=0 failed=18 running=8 stages=probe=8
+2026-02-25 02:50:49 [INFO] progress snapshot: processed=19 working=1 probable=0 failed=18 running=8 stages=probe=8
+2026-02-25 02:50:51 [INFO] progress snapshot: processed=19 working=1 probable=0 failed=18 running=8 stages=probe=8
+2026-02-25 02:50:53 [INFO] progress snapshot: processed=21 working=1 probable=0 failed=20 running=8 stages=probe=8
+2026-02-25 02:50:55 [INFO] progress snapshot: processed=22 working=1 probable=0 failed=21 running=8 stages=spawn=1,probe=7
+2026-02-25 02:50:57 [INFO] progress snapshot: processed=22 working=1 probable=0 failed=21 running=8 stages=probe=8
+2026-02-25 02:50:59 [INFO] progress snapshot: processed=22 working=1 probable=0 failed=21 running=8 stages=probe=8
+2026-02-25 02:51:01 [INFO] progress snapshot: processed=25 working=1 probable=0 failed=24 running=8 stages=probe=8
+2026-02-25 02:51:03 [INFO] progress snapshot: processed=26 working=2 probable=0 failed=24 running=8 stages=spawn=1,probe=7
+2026-02-25 02:51:05 [INFO] progress snapshot: processed=27 working=3 probable=0 failed=24 running=8 stages=probe=8
+2026-02-25 02:51:07 [INFO] progress snapshot: processed=29 working=4 probable=0 failed=25 running=8 stages=spawn=1,probe=7
+2026-02-25 02:51:09 [INFO] progress snapshot: processed=31 working=4 probable=1 failed=26 running=8 stages=probe=8
+2026-02-25 02:51:11 [INFO] progress snapshot: processed=33 working=6 probable=1 failed=26 running=8 stages=probe=8
+2026-02-25 02:51:13 [INFO] progress snapshot: processed=33 working=6 probable=1 failed=26 running=8 stages=probe=8
+2026-02-25 02:51:15 [INFO] progress snapshot: processed=33 working=6 probable=1 failed=26 running=8 stages=probe=8
+2026-02-25 02:51:17 [INFO] progress snapshot: processed=39 working=8 probable=3 failed=28 running=8 stages=probe=8
+2026-02-25 02:51:19 [INFO] progress snapshot: processed=41 working=9 probable=3 failed=29 running=8 stages=spawn=1,probe=7
+2026-02-25 02:51:21 [INFO] progress snapshot: processed=42 working=10 probable=3 failed=29 running=8 stages=probe=8
+2026-02-25 02:51:23 [INFO] progress snapshot: processed=43 working=11 probable=3 failed=29 running=8 stages=probe=8
+2026-02-25 02:51:25 [INFO] progress snapshot: processed=44 working=11 probable=4 failed=29 running=8 stages=probe=8
+2026-02-25 02:51:27 [INFO] progress snapshot: processed=44 working=11 probable=4 failed=29 running=8 stages=spawn=2,probe=6
+2026-02-25 02:51:29 [INFO] progress snapshot: processed=45 working=12 probable=4 failed=29 running=8 stages=probe=8
+2026-02-25 02:51:31 [INFO] progress snapshot: processed=45 working=12 probable=4 failed=29 running=8 stages=probe=8
+2026-02-25 02:51:33 [INFO] progress snapshot: processed=45 working=12 probable=4 failed=29 running=8 stages=probe=8
+2026-02-25 02:51:35 [INFO] progress snapshot: processed=47 working=12 probable=4 failed=31 running=8 stages=probe=8
+2026-02-25 02:51:37 [INFO] progress snapshot: processed=48 working=13 probable=4 failed=31 running=8 stages=probe=8
+2026-02-25 02:51:39 [INFO] progress snapshot: processed=48 working=13 probable=4 failed=31 running=8 stages=probe=8
+2026-02-25 02:51:41 [INFO] progress snapshot: processed=50 working=13 probable=4 failed=33 running=8 stages=probe=8
+2026-02-25 02:51:43 [INFO] progress snapshot: processed=51 working=13 probable=4 failed=34 running=8 stages=probe=8
+2026-02-25 02:51:45 [INFO] progress snapshot: processed=51 working=13 probable=4 failed=34 running=8 stages=probe=8
+2026-02-25 02:51:47 [INFO] progress snapshot: processed=53 working=14 probable=4 failed=35 running=7 stages=probe=7
+2026-02-25 02:51:49 [INFO] progress snapshot: processed=54 working=14 probable=4 failed=36 running=6 stages=probe=6
+2026-02-25 02:51:51 [INFO] progress snapshot: processed=54 working=14 probable=4 failed=36 running=6 stages=probe=6
+2026-02-25 02:51:53 [INFO] progress snapshot: processed=55 working=14 probable=4 failed=37 running=5 stages=probe=5
+2026-02-25 02:51:55 [INFO] progress snapshot: processed=56 working=14 probable=5 failed=37 running=4 stages=probe=4
+2026-02-25 02:51:57 [INFO] progress snapshot: processed=56 working=14 probable=5 failed=37 running=4 stages=probe=4
+2026-02-25 02:51:59 [INFO] progress snapshot: processed=57 working=14 probable=5 failed=38 running=3 stages=probe=3
+2026-02-25 02:52:00 [INFO] progress snapshot: processed=57 working=14 probable=5 failed=38 running=3 stages=probe=3
+2026-02-25 02:52:00 [INFO] candidate summary: processed=58/60 | working=14 | probable=5 | failed=39
+2026-02-25 02:52:00 [INFO] failure[candidate_timeout]=33
+2026-02-25 02:52:00 [INFO] failure[probe_failed]=5
+2026-02-25 02:52:00 [INFO] failure[context_canceled]=1
+2026-02-25 02:52:00 [INFO] Top 3 candidates:
+2026-02-25 02:52:00 [INFO] #1 🇲🇩MD-176.123.1.175-0283 | ss | success=3/3 | ping=598ms | score=2403.0
+2026-02-25 02:52:00 [INFO] #2 🇪🇨EC-38.165.231.25-0225 | ss | success=3/3 | ping=1.049s | score=1952.0
+2026-02-25 02:52:00 [INFO] #3 🇲🇽MX-147.78.1.230-0328 | ss | success=3/3 | ping=1.058s | score=1942.0
+2026-02-25 02:52:00 [WARN] connect failed for 🇲🇩MD-176.123.1.175-0283: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇪🇨EC-38.165.231.25-0225: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇲🇽MX-147.78.1.230-0328: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇨🇦CA-45.154.204.7-0284: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇵🇦PA-138.186.142.80-0228: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇵🇦PA-138.186.142.81-0224: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇧🇴BO-185.93.173.60-0338: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇦🇿 SS-阿塞拜疆-NF解锁加拿大地区非自制剧-ChatGPT-TikTok-YouTube-45.154.204.7:990: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇲🇦MA-188.214.157.58-0346: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇯🇵JP-103.106.228.247-0331: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇵🇪PE-138.186.143.32-0308: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇳🇱NL-92.112.126.90-4914: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇲🇦MA-154.70.207.97-0306: context canceled
+2026-02-25 02:52:00 [WARN] connect failed for 🇪🇸ES-37.143.130.203-0342: context canceled
+2026-02-25 02:52:00 [WARN] all ranked nodes failed; rediscovering: exhausted 14 ranked nodes
+2026-02-25 02:52:00 [INFO] fivi stopped

@@ -71,6 +71,13 @@ type validationSummary struct {
 	Failed        int
 }
 
+var (
+	checkThroughSOCKSFn = probe.CheckThroughSOCKS
+	measureDownloadFn   = probe.MeasureDownloadSpeedMbps
+	waitForProxyReadyFn = waitForProxyReady
+	reserveLocalAddrsFn = reserveLocalAddrs
+)
+
 func Run(ctx context.Context, cfg config.AppConfig) error {
 	return RunWithEvents(ctx, cfg, nil)
 }
@@ -86,6 +93,9 @@ func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- Work
 func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent, adapter engines.Adapter) error {
 	if adapter == nil {
 		adapter = engines.NewXrayAdapter()
+	}
+	if err := ensureListenAddrsAvailable(cfg.ListenSocksAddr, cfg.ListenHTTPAddr); err != nil {
+		return err
 	}
 	engineBin := binaryForAdapter(cfg, adapter)
 	if err := adapter.EnsureBinary(engineBin); err != nil {
@@ -282,7 +292,7 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 
 		parseStarted := time.Now()
 		emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusRunning, attempt, "", nil, parseStarted)
-		socksAddr, httpAddr, err := reserveLocalAddrs()
+		socksAddr, httpAddr, err := reserveLocalAddrsFn()
 		if err != nil {
 			emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusFailed, attempt, FailureReasonReserveAddr, err, parseStarted)
 			emitDone(WorkerStatusFailed, FailureReasonReserveAddr, err, attempt)
@@ -304,7 +314,7 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 			emitStageEvent(events, workerID, c.Raw, WorkerStageSpawn, WorkerStatusFailed, attempt, FailureReasonEngineStart, err, spawnStarted)
 			continue
 		}
-		if err := waitForProxyReady(candidateCtx, socksAddr, httpAddr, cfg.StartupTimeout); err != nil {
+		if err := waitForProxyReadyFn(candidateCtx, socksAddr, httpAddr, cfg.StartupTimeout); err != nil {
 			inst.Stop()
 			lastReason = FailureReasonEngineNotReady
 			emitStageEvent(events, workerID, c.Raw, WorkerStageSpawn, WorkerStatusFailed, attempt, FailureReasonEngineNotReady, err, spawnStarted)
@@ -314,7 +324,7 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 
 		probeStarted := time.Now()
 		emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusRunning, attempt, "", nil, probeStarted)
-		res := probe.CheckThroughSOCKS(candidateCtx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
+		res := checkThroughSOCKSFn(candidateCtx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
 		inst.Stop()
 		if isProbeQualified(cfg, res) {
 			ranked := Ranked{
@@ -439,12 +449,12 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 			return ctx.Err()
 		case <-ticker.C:
 			tick++
-			res := probe.CheckThroughSOCKS(ctx, cfg.ListenSocksAddr, cfg.Targets, cfg.ProbeTimeout)
+			res := checkThroughSOCKSFn(ctx, cfg.ListenSocksAddr, cfg.Targets, cfg.ProbeTimeout)
 			if isProbeQualified(cfg, res) {
 				failures = 0
 				speed := 0.0
 				if tick%3 == 0 {
-					s, err := probe.MeasureDownloadSpeedMbps(ctx, cfg.ListenSocksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
+					s, err := measureDownloadFn(ctx, cfg.ListenSocksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
 					if err == nil {
 						speed = s
 					}
@@ -470,16 +480,16 @@ func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr
 	if err != nil {
 		return nil, probe.Result{}, 0, err
 	}
-	if err := waitForProxyReady(ctx, socksAddr, httpAddr, cfg.StartupTimeout); err != nil {
+	if err := waitForProxyReadyFn(ctx, socksAddr, httpAddr, cfg.StartupTimeout); err != nil {
 		inst.Stop()
 		return nil, probe.Result{}, 0, err
 	}
-	res := probe.CheckThroughSOCKS(ctx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
+	res := checkThroughSOCKSFn(ctx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
 	if !isProbeQualified(cfg, res) {
 		inst.Stop()
 		return nil, probe.Result{}, 0, fmt.Errorf("initial probe failed success=%d/%d", res.Successes, len(cfg.Targets))
 	}
-	speed, _ := probe.MeasureDownloadSpeedMbps(ctx, socksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
+	speed, _ := measureDownloadFn(ctx, socksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
 	return inst, res, speed, nil
 }
 
@@ -504,6 +514,31 @@ func sleepWithCancel(ctx context.Context, d time.Duration) {
 	case <-ctx.Done():
 	case <-t.C:
 	}
+}
+
+func ensureListenAddrsAvailable(socksAddr, httpAddr string) error {
+	if err := ensureListenAddrAvailable("socks", socksAddr); err != nil {
+		return err
+	}
+	if err := ensureListenAddrAvailable("http", httpAddr); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ensureListenAddrAvailable(kind, addr string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf(
+			"%s listen address %s is unavailable: %w; choose another via --%s-addr or stop the process using this port",
+			strings.ToUpper(kind),
+			addr,
+			err,
+			kind,
+		)
+	}
+	_ = ln.Close()
+	return nil
 }
 
 func reserveLocalAddrs() (socksAddr, httpAddr string, err error) {

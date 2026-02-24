@@ -101,3 +101,21 @@ Configure apps/system to use:
 
 - Free public nodes are volatile; defaults can expire. Pass your own source list with `--sources`.
 - The app prioritizes practical connectivity and failover, not perfect protocol completeness for every exotic link format.
+
+## Migration Notes
+
+- New UI flags:
+- `--no-tui` forces plain log mode with periodic progress snapshots.
+
+- New engine flags:
+- `--engine xray|singbox`
+- `--xray-bin /path/to/xray`
+- `--singbox-bin /path/to/sing-box`
+
+- New profile flag:
+- `--profile iran|global` (`iran` is the default).
+
+- New output artifacts:
+- `output/source_report.json`
+- `output/working_configs.txt`
+- `output/probable_configs.txt`

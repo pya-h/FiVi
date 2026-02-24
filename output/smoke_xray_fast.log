@@ -1,0 +1,123 @@
+2026-02-25 02:53:40 [INFO] ui mode=log (--no-tui)
+2026-02-25 02:53:40 [INFO] fivi started with engine=xray, profile=iran, sources=30, workers=8
+2026-02-25 02:53:40 [INFO] fetching subscriptions from 30/30 sources
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt: status 404
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray (99 links)
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub (11 links)
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2: status 404
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/ripaojiedian/freenode/main/sub (16 links)
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt (140 links)
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt (5162 links)
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/all3: status 404
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/ts-sf/fly/main/v2 (71 links)
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/freefq/free/master/v2 (15 links)
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray (63 links)
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/1/config.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/2/config.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/3/config.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://sub.pmsub.me/base64: Get "https://sub.pmsub.me/base64": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/tbbatbb/Proxy/master/dist/v2ray.config.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/changfengoss/pub/main/data/2024_01_17/cvjOPc.txt: status 404
+2026-02-25 02:54:00 [INFO] source ok https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt (26 links)
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription1.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription2.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription3.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/pojokan-id/v2ray-free/main/v2ray: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/yebekhe/v2rayfree/main/v2: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/freev2fly/freev2fly.github.io/gh-pages/_data/freeservers.json: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/wzz1000/ClashR_for_Windows_Alpha/main/v2ray.config: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/ALX-003/V2RAY-XRAYS-2024/main/V2RAY-XVLESS-XVmess/V2RAY-VMESS-VLESS-TROJAN-2024.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/FoxiYao/freesub/main/v2ray: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/roshan9/v2ray/main/v2ray: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/anam2812/v2ray-servers/main/v2ray-servers.txt: status 404
+2026-02-25 02:54:00 [WARN] source failed https://raw.githubusercontent.com/aliaraz/v2ray-config/main/config.txt: status 404
+2026-02-25 02:54:00 [INFO] source health: attempted=30/30 | successes=9 | failures=21 | yield=5603 | cooling_down=0
+2026-02-25 02:54:00 [INFO] source health issue 1: https://raw.githubusercontent.com/ALX-003/V2RAY-XRAYS-2024/main/V2RAY-XVLESS-XVmess/V2RAY-VMESS-VLESS-TROJAN-2024.txt | ok=0 fail=1 streak=1 yield=0 last_ok=never cooldown=none
+2026-02-25 02:54:00 [INFO] source health issue 2: https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/1/config.txt | ok=0 fail=1 streak=1 yield=0 last_ok=never cooldown=none
+2026-02-25 02:54:00 [INFO] source health issue 3: https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/2/config.txt | ok=0 fail=1 streak=1 yield=0 last_ok=never cooldown=none
+2026-02-25 02:54:00 [INFO] testing 20 candidates with 8 workers
+2026-02-25 02:54:02 [INFO] progress snapshot: processed=0 working=0 probable=0 failed=0 running=8 stages=probe=8
+2026-02-25 02:54:04 [INFO] progress snapshot: processed=3 working=0 probable=0 failed=3 running=8 stages=probe=8
+2026-02-25 02:54:06 [INFO] progress snapshot: processed=3 working=0 probable=0 failed=3 running=8 stages=probe=8
+2026-02-25 02:54:08 [INFO] progress snapshot: processed=3 working=0 probable=0 failed=3 running=8 stages=probe=8
+2026-02-25 02:54:10 [INFO] progress snapshot: processed=3 working=0 probable=0 failed=3 running=8 stages=probe=8
+2026-02-25 02:54:12 [INFO] progress snapshot: processed=8 working=0 probable=0 failed=8 running=8 stages=probe=8
+2026-02-25 02:54:14 [INFO] progress snapshot: processed=11 working=0 probable=0 failed=11 running=8 stages=probe=8
+2026-02-25 02:54:16 [INFO] progress snapshot: processed=11 working=0 probable=0 failed=11 running=8 stages=probe=8
+2026-02-25 02:54:18 [INFO] progress snapshot: processed=13 working=0 probable=0 failed=13 running=7 stages=probe=7
+2026-02-25 02:54:20 [INFO] progress snapshot: processed=13 working=0 probable=0 failed=13 running=7 stages=probe=7
+2026-02-25 02:54:22 [INFO] progress snapshot: processed=16 working=0 probable=0 failed=16 running=4 stages=probe=4
+2026-02-25 02:54:24 [INFO] progress snapshot: processed=19 working=0 probable=0 failed=19 running=1 stages=probe=1
+2026-02-25 02:54:26 [INFO] progress snapshot: processed=19 working=0 probable=0 failed=19 running=1 stages=spawn=1
+2026-02-25 02:54:28 [INFO] candidate summary: processed=20/20 | working=0 | probable=0 | failed=20
+2026-02-25 02:54:28 [INFO] failure[candidate_timeout]=15
+2026-02-25 02:54:28 [INFO] failure[probe_failed]=5
+2026-02-25 02:54:28 [WARN] no working nodes found, retrying in 14s
+2026-02-25 02:54:28 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:30 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:32 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:34 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:36 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:38 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:40 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:42 [INFO] fetching subscriptions from 30/30 sources
+2026-02-25 02:54:42 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:44 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:46 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:48 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:50 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:52 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:54 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:56 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:54:58 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:55:00 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=0 stages=-
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt: status 404
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray (99 links)
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub (11 links)
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2: status 404
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/ripaojiedian/freenode/main/sub (16 links)
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt (140 links)
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt (5162 links)
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/all3: status 404
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/ts-sf/fly/main/v2 (71 links)
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/freefq/free/master/v2 (15 links)
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray (63 links)
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/1/config.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/2/config.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/3/config.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://sub.pmsub.me/base64: Get "https://sub.pmsub.me/base64": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/tbbatbb/Proxy/master/dist/v2ray.config.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/changfengoss/pub/main/data/2024_01_17/cvjOPc.txt: status 404
+2026-02-25 02:55:02 [INFO] source ok https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt (26 links)
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription1.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription2.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription3.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/pojokan-id/v2ray-free/main/v2ray: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/yebekhe/v2rayfree/main/v2: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/freev2fly/freev2fly.github.io/gh-pages/_data/freeservers.json: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/wzz1000/ClashR_for_Windows_Alpha/main/v2ray.config: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/ALX-003/V2RAY-XRAYS-2024/main/V2RAY-XVLESS-XVmess/V2RAY-VMESS-VLESS-TROJAN-2024.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/FoxiYao/freesub/main/v2ray: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/roshan9/v2ray/main/v2ray: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/anam2812/v2ray-servers/main/v2ray-servers.txt: status 404
+2026-02-25 02:55:02 [WARN] source failed https://raw.githubusercontent.com/aliaraz/v2ray-config/main/config.txt: status 404
+2026-02-25 02:55:02 [INFO] source health: attempted=30/30 | successes=18 | failures=42 | yield=11206 | cooling_down=0
+2026-02-25 02:55:02 [INFO] source health issue 1: https://raw.githubusercontent.com/ALX-003/V2RAY-XRAYS-2024/main/V2RAY-XVLESS-XVmess/V2RAY-VMESS-VLESS-TROJAN-2024.txt | ok=0 fail=2 streak=2 yield=0 last_ok=never cooldown=none
+2026-02-25 02:55:02 [INFO] source health issue 2: https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/1/config.txt | ok=0 fail=2 streak=2 yield=0 last_ok=never cooldown=none
+2026-02-25 02:55:02 [INFO] source health issue 3: https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/2/config.txt | ok=0 fail=2 streak=2 yield=0 last_ok=never cooldown=none
+2026-02-25 02:55:02 [INFO] testing 20 candidates with 8 workers
+2026-02-25 02:55:02 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=8 stages=probe=8
+2026-02-25 02:55:04 [INFO] progress snapshot: processed=20 working=0 probable=0 failed=20 running=8 stages=probe=8
+2026-02-25 02:55:06 [INFO] progress snapshot: processed=23 working=0 probable=0 failed=23 running=8 stages=probe=8
+2026-02-25 02:55:08 [INFO] progress snapshot: processed=23 working=0 probable=0 failed=23 running=8 stages=probe=8
+2026-02-25 02:55:10 [INFO] progress snapshot: processed=23 working=0 probable=0 failed=23 running=8 stages=spawn=5,probe=3
+2026-02-25 02:55:12 [INFO] progress snapshot: processed=28 working=0 probable=0 failed=28 running=8 stages=probe=8
+2026-02-25 02:55:14 [INFO] progress snapshot: processed=28 working=0 probable=0 failed=28 running=8 stages=probe=8
+2026-02-25 02:55:16 [INFO] progress snapshot: processed=31 working=0 probable=0 failed=31 running=8 stages=probe=8
+2026-02-25 02:55:17 [INFO] progress snapshot: processed=31 working=0 probable=0 failed=31 running=8 stages=probe=8
+2026-02-25 02:55:17 [INFO] candidate summary: processed=18/20 | working=0 | probable=0 | failed=18
+2026-02-25 02:55:17 [INFO] failure[candidate_timeout]=8
+2026-02-25 02:55:17 [INFO] failure[context_canceled]=7
+2026-02-25 02:55:17 [INFO] failure[probe_failed]=3
+2026-02-25 02:55:17 [WARN] no working nodes found, retrying in 14s
+2026-02-25 02:55:17 [INFO] fivi stopped

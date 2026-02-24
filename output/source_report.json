@@ -1,0 +1,290 @@
+{
+  "generated_at": "2026-02-25T02:55:02+03:30",
+  "source_count": 30,
+  "attempted_sources": 30,
+  "cooling_down": 0,
+  "total_successes": 18,
+  "total_failures": 42,
+  "total_yield": 11206,
+  "sources": [
+    {
+      "source": "https://raw.githubusercontent.com/ALX-003/V2RAY-XRAYS-2024/main/V2RAY-XVLESS-XVmess/V2RAY-VMESS-VLESS-TROJAN-2024.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/1/config.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/2/config.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/Alvin9999/pac2/master/v2ray/3/config.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/FoxiYao/freesub/main/v2ray",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/all3",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 22,
+      "last_yield": 11,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/aliaraz/v2ray-config/main/config.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/anam2812/v2ray-servers/main/v2ray-servers.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/changfengoss/pub/main/data/2024_01_17/cvjOPc.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 52,
+      "last_yield": 26,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/freefq/free/master/v2",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 30,
+      "last_yield": 15,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/freev2fly/freev2fly.github.io/gh-pages/_data/freeservers.json",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 10324,
+      "last_yield": 5162,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 198,
+      "last_yield": 99,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 280,
+      "last_yield": 140,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/pojokan-id/v2ray-free/main/v2ray",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/ripaojiedian/freenode/main/sub",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 32,
+      "last_yield": 16,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/roshan9/v2ray/main/v2ray",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 126,
+      "last_yield": 63,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/tbbatbb/Proxy/master/dist/v2ray.config.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/ts-sf/fly/main/v2",
+      "successes": 2,
+      "failures": 0,
+      "consecutive_failures": 0,
+      "total_yield": 142,
+      "last_yield": 71,
+      "last_ok": "2026-02-25T02:55:02+03:30",
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription1.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription2.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription3.txt",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/wzz1000/ClashR_for_Windows_Alpha/main/v2ray.config",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/yebekhe/v2rayfree/main/v2",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    },
+    {
+      "source": "https://sub.pmsub.me/base64",
+      "successes": 0,
+      "failures": 2,
+      "consecutive_failures": 2,
+      "total_yield": 0,
+      "last_yield": 0,
+      "last_seen": "2026-02-25T02:55:02+03:30"
+    }
+  ]
+}
