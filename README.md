@@ -23,7 +23,7 @@ A Go CLI that discovers free V2Ray share links, validates which ones truly conne
 ## Requirements
 
 - Go 1.22+
-- `xray` binary installed and available in PATH, or pass `--xray-bin /path/to/xray`.
+- `xray` binary installed and available in PATH, or pass `--xray-bin /path/to/xray`, or set `FIVI_XRAY_BIN=/path/to/xray`.
 
 ## Build
 
@@ -36,6 +36,12 @@ go build -o fivi .
 
 ```bash
 ./fivi
+```
+
+With explicit xray path:
+
+```bash
+FIVI_XRAY_BIN=/path/to/xray ./fivi
 ```
 
 Useful flags:

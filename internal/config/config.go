@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ type AppConfig struct {
 
 func ParseFlags() AppConfig {
 	var (
-		xrayBin          = flag.String("xray-bin", "xray", "path to xray binary")
+		xrayBin          = flag.String("xray-bin", defaultXrayBin(), "path to xray binary (or set FIVI_XRAY_BIN)")
 		socksAddr        = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
 		httpAddr         = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
 		workers          = flag.Int("workers", max(6, runtime.NumCPU()*2), "parallel workers for candidate testing")
@@ -70,6 +71,13 @@ func ParseFlags() AppConfig {
 		RetryBackoff:     *retryBackoff,
 		OnlySchemes:      allowed,
 	}
+}
+
+func defaultXrayBin() string {
+	if v, ok := os.LookupEnv("FIVI_XRAY_BIN"); ok && strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v)
+	}
+	return "xray"
 }
 
 func DefaultTargets() []string {

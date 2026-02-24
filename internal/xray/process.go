@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -23,7 +24,16 @@ type Instance struct {
 func EnsureBinary(bin string) error {
 	_, err := exec.LookPath(bin)
 	if err != nil {
-		return fmt.Errorf("xray binary not found (%s): %w", bin, err)
+		pathValue := os.Getenv("PATH")
+		if strings.TrimSpace(pathValue) == "" {
+			pathValue = "(empty)"
+		}
+		return fmt.Errorf(
+			"xray binary not found (%s): %w; install xray and ensure it is on PATH, or run with --xray-bin /path/to/xray, or set FIVI_XRAY_BIN=/path/to/xray (PATH=%s)",
+			bin,
+			err,
+			pathValue,
+		)
 	}
 	return nil
 }
