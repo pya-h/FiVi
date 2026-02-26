@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"fivi/internal/binresolver"
 	"fivi/internal/profile"
 	"fivi/internal/sources"
 )
@@ -15,6 +16,7 @@ import (
 type AppConfig struct {
 	Profile          string
 	Engine           string
+	Mode             string // "proxy" or "tunnel"
 	XRAYBin          string
 	SingboxBin       string
 	ListenSocksAddr  string
@@ -25,6 +27,7 @@ type AppConfig struct {
 	TopCount         int
 	CandidateTimeout time.Duration
 	StartupTimeout   time.Duration
+	FetchTimeout     time.Duration
 	ProbeTimeout     time.Duration
 	ProbeMinSuccess  int
 	RequiredTargets  []string
@@ -38,22 +41,29 @@ type AppConfig struct {
 	OnlySchemes      map[string]bool
 }
 
+// IsTunnelMode returns true when the user selected tunnel (TUN) connection mode.
+func (c AppConfig) IsTunnelMode() bool {
+	return strings.EqualFold(c.Mode, "tunnel")
+}
+
 func ParseFlags() AppConfig {
 	defaultProfile := profile.MustResolve("iran")
 
 	var (
 		profileName      = flag.String("profile", "iran", "operational profile name")
 		engine           = flag.String("engine", "xray", "engine backend: xray|singbox")
-		xrayBin          = flag.String("xray-bin", defaultXrayBin(), "path to xray binary (or set FIVI_XRAY_BIN)")
-		singboxBin       = flag.String("singbox-bin", defaultSingboxBin(), "path to sing-box binary (or set FIVI_SINGBOX_BIN)")
+		mode             = flag.String("mode", "tunnel", "connection mode: proxy|tunnel (tunnel uses TUN interface, requires singbox + root)")
+		xrayBin          = flag.String("xray-bin", "", "override path to xray binary (auto-resolved from bins/ by default)")
+		singboxBin       = flag.String("singbox-bin", "", "override path to sing-box binary (auto-resolved from bins/ by default)")
 		socksAddr        = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
 		httpAddr         = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
 		noTUI            = flag.Bool("no-tui", false, "disable TUI mode even in interactive terminals")
-		workers          = flag.Int("workers", max(6, runtime.NumCPU()*2), "parallel workers for candidate testing")
-		maxCandidates    = flag.Int("max-candidates", 250, "max unique candidates to test per round")
+		workers          = flag.Int("workers", defaultWorkers(), "parallel workers for candidate testing")
+		maxCandidates    = flag.Int("max-candidates", 350, "max unique candidates to test per round")
 		topCount         = flag.Int("top", 5, "number of top ranked candidates to print")
 		candidateTimeout = flag.Duration("candidate-timeout", 24*time.Second, "timeout budget per candidate across all attempts")
 		startupTimeout   = flag.Duration("startup-timeout", 4*time.Second, "max wait for local proxy listeners to become ready after engine start")
+		fetchTimeout     = flag.Duration("fetch-timeout", 25*time.Second, "timeout per source URL fetch")
 		probeTimeout     = flag.Duration("probe-timeout", defaultProfile.ProbeTimeout, "timeout per probe request")
 		minProbeSuccess  = flag.Int("min-success", defaultProfile.ProbeMinOK, "minimum successful target probes required")
 		monitorInterval  = flag.Duration("monitor-interval", defaultProfile.MonitorPeriod, "interval between health checks")
@@ -61,7 +71,7 @@ func ParseFlags() AppConfig {
 		sourcesCSV       = flag.String("sources", strings.Join(DefaultSources(), ","), "comma-separated subscription URLs")
 		targetsCSV       = flag.String("targets", strings.Join(defaultProfile.Targets, ","), "comma-separated probe targets")
 		speedTarget      = flag.String("speed-target", "https://www.youtube.com/", "target URL for speed sampling through proxy")
-		speedBytes       = flag.Int64("speed-bytes", 262144, "max bytes to read for speed sampling")
+		speedBytes       = flag.Int64("speed-bytes", 524288, "max bytes to read for speed sampling")
 		retryBackoff     = flag.Duration("retry-backoff", defaultProfile.RetryBackoff, "backoff before restarting discovery when all candidates fail")
 		schemesCSV       = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
@@ -91,15 +101,34 @@ func ParseFlags() AppConfig {
 		*monitorInterval = selectedProfile.MonitorPeriod
 	}
 
+	// Normalise engine name.
 	engineName := normalizeEngine(*engine)
+
+	// Normalise connection mode.
+	modeName := normalizeMode(*mode)
+
+	// Tunnel mode requires singbox. If engine is not explicitly set and mode
+	// is tunnel, switch engine to singbox automatically.
+	if modeName == "tunnel" {
+		if !visited["engine"] {
+			engineName = "singbox"
+		} else if engineName == "xray" {
+			failFlag("tunnel mode requires --engine singbox (xray does not support TUN); use --mode proxy for xray")
+		}
+	}
+
+	// Resolve binary paths: explicit flag > env var > auto-detect from bins/.
+	xrayBinPath := resolveBinary("xray", *xrayBin, "FIVI_XRAY_BIN", visited["xray-bin"])
+	singboxBinPath := resolveBinary("singbox", *singboxBin, "FIVI_SINGBOX_BIN", visited["singbox-bin"])
+
 	switch engineName {
 	case "xray":
-		if strings.TrimSpace(*xrayBin) == "" {
-			failFlag("--xray-bin cannot be empty when --engine=xray")
+		if strings.TrimSpace(xrayBinPath) == "" {
+			failFlag("could not locate xray binary; install xray and use --xray-bin /path/to/xray or place it in bins/xray/%s/", runtime.GOARCH)
 		}
 	case "singbox":
-		if strings.TrimSpace(*singboxBin) == "" {
-			failFlag("--singbox-bin cannot be empty when --engine=singbox")
+		if strings.TrimSpace(singboxBinPath) == "" {
+			failFlag("could not locate sing-box binary; install sing-box and use --singbox-bin /path/to/sing-box or place it in bins/singbox/%s/", runtime.GOARCH)
 		}
 	default:
 		failFlag("invalid --engine=%q (supported: xray, singbox)", *engine)
@@ -113,8 +142,9 @@ func ParseFlags() AppConfig {
 	return AppConfig{
 		Profile:          selectedProfile.Name,
 		Engine:           engineName,
-		XRAYBin:          *xrayBin,
-		SingboxBin:       *singboxBin,
+		Mode:             modeName,
+		XRAYBin:          xrayBinPath,
+		SingboxBin:       singboxBinPath,
 		ListenSocksAddr:  *socksAddr,
 		ListenHTTPAddr:   *httpAddr,
 		NoTUI:            *noTUI,
@@ -123,6 +153,7 @@ func ParseFlags() AppConfig {
 		TopCount:         *topCount,
 		CandidateTimeout: *candidateTimeout,
 		StartupTimeout:   *startupTimeout,
+		FetchTimeout:     *fetchTimeout,
 		ProbeTimeout:     *probeTimeout,
 		ProbeMinSuccess:  *minProbeSuccess,
 		RequiredTargets:  append([]string(nil), selectedProfile.RequiredTargetTokens...),
@@ -137,18 +168,31 @@ func ParseFlags() AppConfig {
 	}
 }
 
-func defaultXrayBin() string {
-	if v, ok := os.LookupEnv("FIVI_XRAY_BIN"); ok && strings.TrimSpace(v) != "" {
-		return strings.TrimSpace(v)
+func defaultWorkers() int {
+	n := runtime.NumCPU() * 3
+	if n < 10 {
+		n = 10
 	}
-	return "xray"
+	return n
 }
 
-func defaultSingboxBin() string {
-	if v, ok := os.LookupEnv("FIVI_SINGBOX_BIN"); ok && strings.TrimSpace(v) != "" {
+// resolveBinary determines the binary path for an engine.
+// Priority: explicit flag > environment variable > auto-detect from bins/.
+func resolveBinary(engine, flagValue, envKey string, flagExplicit bool) string {
+	// 1. Explicit flag value.
+	if flagExplicit && strings.TrimSpace(flagValue) != "" {
+		return strings.TrimSpace(flagValue)
+	}
+	// 2. Environment variable.
+	if v, ok := os.LookupEnv(envKey); ok && strings.TrimSpace(v) != "" {
 		return strings.TrimSpace(v)
 	}
-	return "sing-box"
+	// 3. Auto-detect from bins/ directory.
+	if resolved, err := binresolver.Resolve(engine); err == nil {
+		return resolved
+	}
+	// 4. Empty — caller validates.
+	return ""
 }
 
 func DefaultTargets() []string {
@@ -172,19 +216,22 @@ func splitCSV(v string) []string {
 	return out
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 func normalizeEngine(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))
 	if v == "sing-box" {
 		return "singbox"
 	}
 	return v
+}
+
+func normalizeMode(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	switch v {
+	case "proxy", "tunnel":
+		return v
+	default:
+		return "tunnel"
+	}
 }
 
 func failFlag(format string, args ...any) {

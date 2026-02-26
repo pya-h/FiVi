@@ -24,7 +24,7 @@ func (a benchmarkAdapter) EnsureBinary(path string) error {
 	return nil
 }
 
-func (a benchmarkAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, engines.Parsed, error) {
+func (a benchmarkAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, engines.Parsed, error) {
 	return []byte(`{}`), engines.Parsed{Name: rawURI, Protocol: "vmess"}, nil
 }
 

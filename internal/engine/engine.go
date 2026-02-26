@@ -137,9 +137,28 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	roundSources := selectSourcesForRound(cfg.BootstrapSources, health, time.Now())
 	logx.Infof("fetching subscriptions from %d/%d sources", len(roundSources), len(cfg.BootstrapSources))
 
-	sourceResults := fetch.FetchAll(ctx, roundSources, 20*time.Second)
+	fetchTimeout := cfg.FetchTimeout
+	if fetchTimeout <= 0 {
+		fetchTimeout = 25 * time.Second
+	}
+	sourceResults := fetch.FetchAll(ctx, roundSources, fetchTimeout)
 	all := make([]string, 0, 4096)
 	for _, r := range sourceResults {
+		if r.Err == nil && len(r.Links) > 0 {
+			// Cache successful fetches for restricted-network resilience.
+			fetch.SaveToCache(r.Source, r.Links)
+		}
+		if r.Err != nil {
+			// Try cached data when live fetch fails (common in restricted regions).
+			if cached, ok := fetch.LoadFromCache(r.Source); ok {
+				logx.Warnf("source failed %s: %v (using %d cached links)", r.Source, r.Err, len(cached))
+				if health != nil {
+					health.Observe(r.Source, len(cached), nil, time.Now())
+				}
+				all = append(all, cached...)
+				continue
+			}
+		}
 		if health != nil {
 			health.Observe(r.Source, len(r.Links), r.Err, time.Now())
 		}
@@ -166,6 +185,9 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 		return nil, fmt.Errorf("no candidates after normalize")
 	}
 	logx.Infof("testing %d candidates with %d workers", len(cands), cfg.Workers)
+
+	// Write all fetched configs before validation.
+	writeAllConfigs(cands)
 
 	validation := validateCandidates(ctx, cfg, cands, events, adapter, engineBin)
 	if len(validation.Working) == 0 {
@@ -298,7 +320,8 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 			emitDone(WorkerStatusFailed, FailureReasonReserveAddr, err, attempt)
 			return candidateOutcome{Raw: c.Raw, Reason: FailureReasonReserveAddr}
 		}
-		configJSON, parsed, err := adapter.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr)
+		// Candidate testing always uses proxy mode (no TUN).
+		configJSON, parsed, err := adapter.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr, false)
 		if err != nil {
 			emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusFailed, attempt, FailureReasonParseCandidate, err, parseStarted)
 			emitDone(WorkerStatusFailed, FailureReasonParseCandidate, err, attempt)
@@ -382,7 +405,6 @@ func effectiveCandidateTimeout(cfg config.AppConfig) time.Duration {
 	if cfg.CandidateTimeout > 0 {
 		return cfg.CandidateTimeout
 	}
-	// Keep a sane fallback if flag/env wiring changes.
 	return 24 * time.Second
 }
 
@@ -392,7 +414,7 @@ func waitForProxyReady(ctx context.Context, socksAddr, httpAddr string, timeout 
 	}
 	readyCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	ticker := time.NewTicker(120 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -408,7 +430,7 @@ func waitForProxyReady(ctx context.Context, socksAddr, httpAddr string, timeout 
 }
 
 func isListeningAddr(addr string) bool {
-	conn, err := net.DialTimeout("tcp", addr, 160*time.Millisecond)
+	conn, err := net.DialTimeout("tcp", addr, 150*time.Millisecond)
 	if err != nil {
 		return false
 	}
@@ -426,6 +448,9 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 		}
 
 		connectedAt := time.Now()
+		if cfg.IsTunnelMode() {
+			logx.Infof("tunnel mode active: all system traffic is routed through the proxy")
+		}
 		printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID(), connectedAt, initialProbe, initialSpeed, 0)
 		monitorErr := monitorConnection(ctx, cfg, cand, connectedAt)
 		inst.Stop()
@@ -472,7 +497,8 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 }
 
 func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string, adapter engines.Adapter, engineBin string) (engines.Instance, probe.Result, float64, error) {
-	cfgJSON, _, err := adapter.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr)
+	// Active connection uses the configured mode (tunnel adds TUN inbound).
+	cfgJSON, _, err := adapter.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr, cfg.IsTunnelMode())
 	if err != nil {
 		return nil, probe.Result{}, 0, err
 	}
@@ -520,10 +546,7 @@ func ensureListenAddrsAvailable(socksAddr, httpAddr string) error {
 	if err := ensureListenAddrAvailable("socks", socksAddr); err != nil {
 		return err
 	}
-	if err := ensureListenAddrAvailable("http", httpAddr); err != nil {
-		return err
-	}
-	return nil
+	return ensureListenAddrAvailable("http", httpAddr)
 }
 
 func ensureListenAddrAvailable(kind, addr string) error {
@@ -567,7 +590,6 @@ func hasRequiredTargetsOK(results []probe.TargetResult, requiredTokens []string)
 	if len(requiredTokens) == 0 {
 		return true
 	}
-
 	for _, token := range requiredTokens {
 		token = strings.TrimSpace(token)
 		if token == "" {
@@ -675,6 +697,16 @@ func printValidationSummary(summary validationSummary, totalCandidates int) {
 	}
 }
 
+func writeAllConfigs(cands []parser.Candidate) {
+	links := make([]string, 0, len(cands))
+	for _, c := range cands {
+		links = append(links, c.Raw)
+	}
+	if err := writeLinkBucket(filepath.Join("output", "all_configs.txt"), "All fetched candidates", links); err != nil {
+		logx.Warnf("failed to write all_configs.txt: %v", err)
+	}
+}
+
 func writeCandidateBuckets(working []Ranked, probable []ProbableCandidate) error {
 	workingLinks := make([]string, 0, len(working))
 	for _, c := range working {
@@ -689,10 +721,7 @@ func writeCandidateBuckets(working []Ranked, probable []ProbableCandidate) error
 	if err := writeLinkBucket(filepath.Join("output", "working_configs.txt"), "Working candidates", workingLinks); err != nil {
 		return err
 	}
-	if err := writeLinkBucket(filepath.Join("output", "probable_configs.txt"), "Probable candidates", probableLinks); err != nil {
-		return err
-	}
-	return nil
+	return writeLinkBucket(filepath.Join("output", "probable_configs.txt"), "Probable candidates", probableLinks)
 }
 
 func writeLinkBucket(path, title string, rawLinks []string) error {
@@ -956,13 +985,9 @@ func binaryForAdapter(cfg config.AppConfig, adapter engines.Adapter) string {
 }
 
 func scoreCandidate(successes int, avgLatency time.Duration) float64 {
-	latMs := float64(max(int(avgLatency.Milliseconds()), 1))
-	return float64(successes*1000) - latMs
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
+	latMs := avgLatency.Milliseconds()
+	if latMs < 1 {
+		latMs = 1
 	}
-	return b
+	return float64(successes*1000) - float64(latMs)
 }

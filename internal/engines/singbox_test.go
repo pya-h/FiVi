@@ -18,7 +18,7 @@ func TestSingboxBuildRuntimeConfigFromURI(t *testing.T) {
 	payload := `{"ps":"sbox-node","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"ws","host":"cdn.example.com","path":"/ws","tls":"tls","sni":"example.com"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfg, parsed, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809")
+	cfg, parsed, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false)
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI error: %v", err)
 	}
@@ -51,7 +51,87 @@ func TestSingboxBuildRuntimeConfigFromURI(t *testing.T) {
 
 func TestSingboxBuildRuntimeConfigFromURIInvalid(t *testing.T) {
 	adapter := NewSingboxAdapter()
-	if _, _, err := adapter.BuildRuntimeConfigFromURI("invalid://link", "127.0.0.1:10808", "127.0.0.1:10809"); err == nil {
+	if _, _, err := adapter.BuildRuntimeConfigFromURI("invalid://link", "127.0.0.1:10808", "127.0.0.1:10809", false); err == nil {
 		t.Fatalf("expected error for invalid URI")
+	}
+}
+
+func TestSingboxTunnelModeAddsTUNInbound(t *testing.T) {
+	adapter := NewSingboxAdapter()
+	payload := `{"ps":"tunnel-node","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
+	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
+
+	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", true)
+	if err != nil {
+		t.Fatalf("BuildRuntimeConfigFromURI tunnel error: %v", err)
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal(cfg, &root); err != nil {
+		t.Fatalf("config is not valid json: %v", err)
+	}
+
+	inbounds, ok := root["inbounds"].([]any)
+	if !ok {
+		t.Fatalf("missing inbounds")
+	}
+
+	// Tunnel mode should have 3 inbounds: tun, socks, http
+	if len(inbounds) != 3 {
+		t.Fatalf("expected 3 inbounds in tunnel mode, got %d", len(inbounds))
+	}
+
+	tun, ok := inbounds[0].(map[string]any)
+	if !ok {
+		t.Fatal("first inbound is not a map")
+	}
+	if tun["type"] != "tun" {
+		t.Fatalf("first inbound type should be tun, got %v", tun["type"])
+	}
+	if tun["auto_route"] != true {
+		t.Fatal("tun inbound should have auto_route=true")
+	}
+
+	// Route should have auto_detect_interface in tunnel mode.
+	route, ok := root["route"].(map[string]any)
+	if !ok {
+		t.Fatal("missing route")
+	}
+	if route["auto_detect_interface"] != true {
+		t.Fatal("route should have auto_detect_interface=true in tunnel mode")
+	}
+}
+
+func TestSingboxProxyModeNoTUN(t *testing.T) {
+	adapter := NewSingboxAdapter()
+	payload := `{"ps":"proxy-node","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
+	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
+
+	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false)
+	if err != nil {
+		t.Fatalf("BuildRuntimeConfigFromURI proxy error: %v", err)
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal(cfg, &root); err != nil {
+		t.Fatalf("config is not valid json: %v", err)
+	}
+
+	inbounds, ok := root["inbounds"].([]any)
+	if !ok {
+		t.Fatalf("missing inbounds")
+	}
+
+	// Proxy mode should have 2 inbounds: socks, http (no tun)
+	if len(inbounds) != 2 {
+		t.Fatalf("expected 2 inbounds in proxy mode, got %d", len(inbounds))
+	}
+
+	first, ok := inbounds[0].(map[string]any)
+	if !ok {
+		t.Fatal("first inbound is not a map")
+	}
+	if first["type"] == "tun" {
+		t.Fatal("proxy mode should not have tun inbound")
 	}
 }

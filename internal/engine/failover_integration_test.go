@@ -24,7 +24,7 @@ func (m *mockAdapter) EnsureBinary(path string) error {
 	return nil
 }
 
-func (m *mockAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, engines.Parsed, error) {
+func (m *mockAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, engines.Parsed, error) {
 	return []byte(`{}`), engines.Parsed{Name: rawURI, Protocol: "vmess"}, nil
 }
 

@@ -20,7 +20,8 @@ func (a *XrayAdapter) EnsureBinary(path string) error {
 	return xray.EnsureBinary(path)
 }
 
-func (a *XrayAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Parsed, error) {
+func (a *XrayAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, Parsed, error) {
+	// xray does not support TUN/tunnel mode natively; tunnelMode is ignored.
 	cfgJSON, parsed, err := xray.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr)
 	if err != nil {
 		return nil, Parsed{}, err

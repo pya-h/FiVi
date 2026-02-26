@@ -3,7 +3,6 @@ package probe
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -137,7 +136,7 @@ func request204Or200(ctx context.Context, client *http.Client, target string) (i
 	if resp.StatusCode >= 200 && resp.StatusCode < 500 {
 		return resp.StatusCode, nil
 	}
-	return resp.StatusCode, errors.New(fmt.Sprintf("status %d", resp.StatusCode))
+	return resp.StatusCode, fmt.Errorf("status %d", resp.StatusCode)
 }
 
 func newSOCKSClient(socksAddr string, timeout time.Duration) (*http.Client, error) {

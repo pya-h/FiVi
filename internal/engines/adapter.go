@@ -15,6 +15,6 @@ type Instance interface {
 type Adapter interface {
 	Name() string
 	EnsureBinary(path string) error
-	BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Parsed, error)
+	BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, Parsed, error)
 	Start(ctx context.Context, bin string, cfgJSON []byte, name string) (Instance, error)
 }

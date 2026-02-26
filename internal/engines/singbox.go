@@ -44,7 +44,7 @@ func (a *SingboxAdapter) EnsureBinary(path string) error {
 	return nil
 }
 
-func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Parsed, error) {
+func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, Parsed, error) {
 	parsed, err := xray.ParseURI(rawURI)
 	if err != nil {
 		return nil, Parsed{}, err
@@ -54,37 +54,59 @@ func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr s
 		return nil, Parsed{}, err
 	}
 
+	inbounds := []any{
+		map[string]any{
+			"type":        "socks",
+			"tag":         "socks-in",
+			"listen":      hostOnly(socksAddr),
+			"listen_port": portOnly(socksAddr),
+		},
+		map[string]any{
+			"type":        "http",
+			"tag":         "http-in",
+			"listen":      hostOnly(httpAddr),
+			"listen_port": portOnly(httpAddr),
+		},
+	}
+
+	inboundTags := []string{"socks-in", "http-in"}
+
+	if tunnelMode {
+		tunInbound := map[string]any{
+			"type":         "tun",
+			"tag":          "tun-in",
+			"address":      []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"},
+			"auto_route":   true,
+			"strict_route": true,
+			"stack":        "mixed",
+		}
+		inbounds = append([]any{tunInbound}, inbounds...)
+		inboundTags = append([]string{"tun-in"}, inboundTags...)
+	}
+
+	route := map[string]any{
+		"rules": []any{
+			map[string]any{
+				"inbound":  inboundTags,
+				"outbound": "proxy",
+			},
+		},
+	}
+	if tunnelMode {
+		route["auto_detect_interface"] = true
+	}
+
 	cfg := map[string]any{
 		"log": map[string]any{
 			"level": "warn",
 		},
-		"inbounds": []any{
-			map[string]any{
-				"type":        "socks",
-				"tag":         "socks-in",
-				"listen":      hostOnly(socksAddr),
-				"listen_port": portOnly(socksAddr),
-			},
-			map[string]any{
-				"type":        "http",
-				"tag":         "http-in",
-				"listen":      hostOnly(httpAddr),
-				"listen_port": portOnly(httpAddr),
-			},
-		},
+		"inbounds": inbounds,
 		"outbounds": []any{
 			proxyOutbound,
 			map[string]any{"type": "direct", "tag": "direct"},
 			map[string]any{"type": "block", "tag": "blocked"},
 		},
-		"route": map[string]any{
-			"rules": []any{
-				map[string]any{
-					"inbound":  []string{"socks-in", "http-in"},
-					"outbound": "proxy",
-				},
-			},
-		},
+		"route": route,
 	}
 
 	body, err := json.Marshal(cfg)
