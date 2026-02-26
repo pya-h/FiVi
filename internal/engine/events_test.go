@@ -81,3 +81,34 @@ func hasWorkerEvent(events []WorkerEvent, stage WorkerStage, status WorkerStatus
 	}
 	return false
 }
+
+func TestEmitStatusNilChannelNoOp(t *testing.T) {
+	// Should not panic.
+	emitStatus(nil, StatusUpdate{Phase: PhaseDiscovering})
+}
+
+func TestEmitStatusDoesNotBlockWhenFull(t *testing.T) {
+	ch := make(chan StatusUpdate, 1)
+	ch <- StatusUpdate{Phase: PhaseDiscovering}
+
+	done := make(chan struct{})
+	go func() {
+		emitStatus(ch, StatusUpdate{Phase: PhaseMonitoring})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("emitStatus blocked on full channel")
+	}
+}
+
+func TestEmitStatusSetsTimestamp(t *testing.T) {
+	ch := make(chan StatusUpdate, 1)
+	emitStatus(ch, StatusUpdate{Phase: PhaseMonitoring})
+	got := <-ch
+	if got.Timestamp.IsZero() {
+		t.Fatal("expected timestamp to be set")
+	}
+}

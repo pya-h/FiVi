@@ -56,16 +56,20 @@ func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr s
 
 	inbounds := []any{
 		map[string]any{
-			"type":        "socks",
-			"tag":         "socks-in",
-			"listen":      hostOnly(socksAddr),
-			"listen_port": portOnly(socksAddr),
+			"type":                       "socks",
+			"tag":                        "socks-in",
+			"listen":                     hostOnly(socksAddr),
+			"listen_port":                portOnly(socksAddr),
+			"sniff":                      true,
+			"sniff_override_destination": true,
 		},
 		map[string]any{
-			"type":        "http",
-			"tag":         "http-in",
-			"listen":      hostOnly(httpAddr),
-			"listen_port": portOnly(httpAddr),
+			"type":                       "http",
+			"tag":                        "http-in",
+			"listen":                     hostOnly(httpAddr),
+			"listen_port":                portOnly(httpAddr),
+			"sniff":                      true,
+			"sniff_override_destination": true,
 		},
 	}
 
@@ -73,19 +77,53 @@ func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr s
 
 	if tunnelMode {
 		tunInbound := map[string]any{
-			"type":         "tun",
-			"tag":          "tun-in",
-			"address":      []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"},
-			"auto_route":   true,
-			"strict_route": true,
-			"stack":        "mixed",
+			"type":                       "tun",
+			"tag":                        "tun-in",
+			"address":                    []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"},
+			"auto_route":                 true,
+			"strict_route":               true,
+			"stack":                      "mixed",
+			"sniff":                      true,
+			"sniff_override_destination": true,
+			"endpoint_independent_nat":   true,
 		}
 		inbounds = append([]any{tunInbound}, inbounds...)
 		inboundTags = append([]string{"tun-in"}, inboundTags...)
 	}
 
+	// DNS: remote through proxy, local through direct (prevents resolution loop).
+	dnsConfig := map[string]any{
+		"servers": []any{
+			map[string]any{
+				"tag":     "remote-dns",
+				"address": "tls://8.8.8.8",
+				"detour":  "proxy",
+			},
+			map[string]any{
+				"tag":     "local-dns",
+				"address": "223.5.5.5",
+				"detour":  "direct",
+			},
+		},
+		"rules": []any{
+			map[string]any{
+				"outbound": "any",
+				"server":   "local-dns",
+			},
+		},
+		"strategy": "prefer_ipv4",
+	}
+
 	route := map[string]any{
 		"rules": []any{
+			map[string]any{
+				"protocol": "dns",
+				"outbound": "dns-out",
+			},
+			map[string]any{
+				"ip_is_private": true,
+				"outbound":      "direct",
+			},
 			map[string]any{
 				"inbound":  inboundTags,
 				"outbound": "proxy",
@@ -100,11 +138,13 @@ func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr s
 		"log": map[string]any{
 			"level": "warn",
 		},
+		"dns":      dnsConfig,
 		"inbounds": inbounds,
 		"outbounds": []any{
 			proxyOutbound,
 			map[string]any{"type": "direct", "tag": "direct"},
 			map[string]any{"type": "block", "tag": "blocked"},
+			map[string]any{"type": "dns", "tag": "dns-out"},
 		},
 		"route": route,
 	}

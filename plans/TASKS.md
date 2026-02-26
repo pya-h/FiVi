@@ -113,3 +113,33 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 25. [x] `F4` Final docs and release notes.
 - Output: updated README + migration notes.
 - Done when: all new flags and behavior are documented.
+
+## Milestone G: V2rayN-Quality Configs + Status Events + UI Redesign
+
+26. [x] `G1` Xray config: add DNS, sniffing, IPIfNonMatch, private-IP routing.
+- Output: V2rayN-equivalent xray runtime config with DNS section, sniffing on inbounds, IPIfNonMatch domain strategy, private CIDR direct routing.
+- Done when: `TestBuildRuntimeConfigHasDNSSniffingAndRouting` passes.
+
+27. [x] `G2` Singbox config: add DNS (remote/local with loop prevention), sniffing, dns-out, ip_is_private, NAT.
+- Output: V2rayN-equivalent singbox runtime config with dual DNS servers, sniffing, dns-out outbound, private IP routing, endpoint_independent_nat for TUN.
+- Done when: `TestSingboxProxyModeHasDNSAndSniffing` and `TestSingboxTunnelModeHasNATAndSniffing` pass.
+
+28. [x] `G3` Add Phase/StatusUpdate types and emitStatus helper.
+- Output: `Phase` type (discovering/connecting/monitoring/failover), `StatusUpdate` struct, non-blocking `emitStatus()`.
+- Done when: `TestEmitStatusNilChannelNoOp`, `TestEmitStatusDoesNotBlockWhenFull`, `TestEmitStatusSetsTimestamp` pass.
+
+29. [x] `G4` Thread status channel through engine and main.
+- Output: `status chan<- StatusUpdate` parameter on RunWithEvents, RunWithAdapter, discoverAndRank, connectAndMonitor, monitorConnection; emitStatus calls at all phase transitions; status channel created and wired in main.go.
+- Done when: `go build ./...` compiles cleanly with updated signatures.
+
+30. [x] `G5` Redesign TUI dashboard with phase-aware views.
+- Output: discovery view (progress bar, color-coded stats, sorted worker table with icons) and monitoring view (node info, ping/speed/probes, proxy addresses, health history).
+- Done when: `TestDashboardPhaseTransition`, `TestDashboardMonitoringView`, `TestRenderProgressBar`, `TestFormatElapsed` pass.
+
+31. [x] `G6` Update log mode progress reporter with status channel and phase logging.
+- Output: phase transition logs, health check metric logs, graceful dual-channel close handling.
+- Done when: `TestRunLogProgressReporterEmitsSnapshots` passes with updated signature.
+
+32. [x] `G7` Update all UI tests for new signatures.
+- Output: dashboard_test.go and progress_test.go updated for new function signatures.
+- Done when: `go test ./internal/ui` passes.

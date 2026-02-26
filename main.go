@@ -43,25 +43,27 @@ func runWithMode(ctx context.Context, cfg config.AppConfig, mode ui.Mode) error 
 		buffer = 128
 	}
 	events := make(chan engine.WorkerEvent, buffer)
+	status := make(chan engine.StatusUpdate, 64)
 
 	if mode == ui.ModeTUI {
-		return runTUI(ctx, cfg, events)
+		return runTUI(ctx, cfg, events, status)
 	}
 
-	return runLogMode(ctx, cfg, events)
+	return runLogMode(ctx, cfg, events, status)
 }
 
-func runTUI(ctx context.Context, cfg config.AppConfig, events chan engine.WorkerEvent) error {
+func runTUI(ctx context.Context, cfg config.AppConfig, events chan engine.WorkerEvent, status chan engine.StatusUpdate) error {
 	engineCtx, cancelEngine := context.WithCancel(ctx)
 	defer cancelEngine()
 
 	engineDone := make(chan error, 1)
 	go func() {
 		defer close(events)
-		engineDone <- engine.RunWithEvents(engineCtx, cfg, events)
+		defer close(status)
+		engineDone <- engine.RunWithEvents(engineCtx, cfg, events, status)
 	}()
 
-	uiErr := ui.RunDashboard(engineCtx, events)
+	uiErr := ui.RunDashboard(engineCtx, events, status)
 	cancelEngine()
 	engineErr := <-engineDone
 	if uiErr != nil && !errors.Is(uiErr, context.Canceled) {
@@ -70,17 +72,18 @@ func runTUI(ctx context.Context, cfg config.AppConfig, events chan engine.Worker
 	return engineErr
 }
 
-func runLogMode(ctx context.Context, cfg config.AppConfig, events chan engine.WorkerEvent) error {
+func runLogMode(ctx context.Context, cfg config.AppConfig, events chan engine.WorkerEvent, status chan engine.StatusUpdate) error {
 	reporterCtx, reporterCancel := context.WithCancel(ctx)
 	reporterDone := make(chan struct{})
 	go func() {
 		defer close(reporterDone)
-		ui.RunLogProgressReporter(reporterCtx, events, 2*time.Second)
+		ui.RunLogProgressReporter(reporterCtx, events, status, 2*time.Second)
 	}()
 
-	err := engine.RunWithEvents(ctx, cfg, events)
+	err := engine.RunWithEvents(ctx, cfg, events, status)
 	reporterCancel()
 	close(events)
+	close(status)
 	<-reporterDone
 	return err
 }

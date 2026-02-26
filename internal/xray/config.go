@@ -26,6 +26,11 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Pars
 		"log": map[string]any{
 			"loglevel": "warning",
 		},
+		"dns": map[string]any{
+			"servers": []any{
+				map[string]any{"address": "8.8.8.8", "port": 53},
+			},
+		},
 		"inbounds": []any{
 			map[string]any{
 				"tag":      "socks-in",
@@ -33,12 +38,14 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Pars
 				"port":     portOnly(socksAddr),
 				"protocol": "socks",
 				"settings": map[string]any{"auth": "noauth", "udp": true},
+				"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls"}},
 			},
 			map[string]any{
 				"tag":      "http-in",
 				"listen":   hostOnly(httpAddr),
 				"port":     portOnly(httpAddr),
 				"protocol": "http",
+				"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls"}},
 			},
 		},
 		"outbounds": []any{
@@ -47,8 +54,9 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Pars
 			map[string]any{"tag": "blocked", "protocol": "blackhole"},
 		},
 		"routing": map[string]any{
-			"domainStrategy": "AsIs",
+			"domainStrategy": "IPIfNonMatch",
 			"rules": []any{
+				map[string]any{"type": "field", "outboundTag": "direct", "ip": privateIPRanges()},
 				map[string]any{"type": "field", "outboundTag": "proxy", "network": "tcp,udp"},
 			},
 		},
@@ -58,6 +66,19 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Pars
 		return nil, Parsed{}, err
 	}
 	return b, parsed, nil
+}
+
+func privateIPRanges() []string {
+	return []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"127.0.0.0/8",
+		"169.254.0.0/16",
+		"::1/128",
+		"fc00::/7",
+		"fe80::/10",
+	}
 }
 
 func ParseURI(raw string) (Parsed, error) {

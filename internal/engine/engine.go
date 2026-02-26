@@ -79,18 +79,18 @@ var (
 )
 
 func Run(ctx context.Context, cfg config.AppConfig) error {
-	return RunWithEvents(ctx, cfg, nil)
+	return RunWithEvents(ctx, cfg, nil, nil)
 }
 
-func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent) error {
+func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent, status chan<- StatusUpdate) error {
 	adapter, err := adapterFromConfig(cfg)
 	if err != nil {
 		return err
 	}
-	return RunWithAdapter(ctx, cfg, events, adapter)
+	return RunWithAdapter(ctx, cfg, events, status, adapter)
 }
 
-func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent, adapter engines.Adapter) error {
+func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent, status chan<- StatusUpdate, adapter engines.Adapter) error {
 	if adapter == nil {
 		adapter = engines.NewXrayAdapter()
 	}
@@ -110,7 +110,8 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 		default:
 		}
 
-		ranked, err := discoverAndRank(ctx, cfg, health, events, adapter, engineBin)
+		emitStatus(status, StatusUpdate{Phase: PhaseDiscovering})
+		ranked, err := discoverAndRank(ctx, cfg, health, events, status, adapter, engineBin)
 		if err != nil {
 			logx.Errorf("discovery failed: %v", err)
 			sleepWithCancel(ctx, cfg.RetryBackoff)
@@ -122,7 +123,7 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 			continue
 		}
 
-		if err := connectAndMonitor(ctx, cfg, ranked, adapter, engineBin); err != nil {
+		if err := connectAndMonitor(ctx, cfg, ranked, status, adapter, engineBin); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
 			}
@@ -133,7 +134,7 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 	}
 }
 
-func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker, events chan<- WorkerEvent, adapter engines.Adapter, engineBin string) ([]Ranked, error) {
+func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker, events chan<- WorkerEvent, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) ([]Ranked, error) {
 	roundSources := selectSourcesForRound(cfg.BootstrapSources, health, time.Now())
 	logx.Infof("fetching subscriptions from %d/%d sources", len(roundSources), len(cfg.BootstrapSources))
 
@@ -185,6 +186,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 		return nil, fmt.Errorf("no candidates after normalize")
 	}
 	logx.Infof("testing %d candidates with %d workers", len(cands), cfg.Workers)
+	emitStatus(status, StatusUpdate{Phase: PhaseDiscovering, TotalCands: len(cands)})
 
 	// Write all fetched configs before validation.
 	writeAllConfigs(cands)
@@ -438,9 +440,14 @@ func isListeningAddr(addr string) bool {
 	return true
 }
 
-func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranked, adapter engines.Adapter, engineBin string) error {
+func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranked, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) error {
 	for i := 0; i < len(ranked); i++ {
 		cand := ranked[i]
+		emitStatus(status, StatusUpdate{
+			Phase:    PhaseConnecting,
+			NodeName: displayName(cand),
+			Protocol: cand.Scheme,
+		})
 		inst, initialProbe, initialSpeed, err := startCandidate(ctx, cfg, cand.Raw, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, adapter, engineBin)
 		if err != nil {
 			logx.Warnf("connect failed for %s: %v", displayName(cand), err)
@@ -452,17 +459,34 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 			logx.Infof("tunnel mode active: all system traffic is routed through the proxy")
 		}
 		printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID(), connectedAt, initialProbe, initialSpeed, 0)
-		monitorErr := monitorConnection(ctx, cfg, cand, connectedAt)
+		emitStatus(status, StatusUpdate{
+			Phase:       PhaseMonitoring,
+			NodeName:    displayName(cand),
+			Protocol:    cand.Scheme,
+			Ping:        initialProbe.AvgLatency,
+			Speed:       initialSpeed,
+			ProbeOK:     initialProbe.Successes,
+			ProbeTotal:  initialProbe.TargetCount,
+			ConnectedAt: connectedAt,
+			SocksAddr:   cfg.ListenSocksAddr,
+			HTTPAddr:    cfg.ListenHTTPAddr,
+		})
+		monitorErr := monitorConnection(ctx, cfg, cand, connectedAt, status)
 		inst.Stop()
 		if monitorErr == nil || errors.Is(monitorErr, context.Canceled) {
 			return monitorErr
 		}
+		emitStatus(status, StatusUpdate{
+			Phase:    PhaseFailover,
+			NodeName: displayName(cand),
+			Protocol: cand.Scheme,
+		})
 		logx.Warnf("connection degraded for %s: %v", displayName(cand), monitorErr)
 	}
 	return fmt.Errorf("exhausted %d ranked nodes", len(ranked))
 }
 
-func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, connectedAt time.Time) error {
+func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, connectedAt time.Time, status chan<- StatusUpdate) error {
 	ticker := time.NewTicker(cfg.MonitorInterval)
 	defer ticker.Stop()
 
@@ -485,10 +509,35 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 					}
 				}
 				printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, 0, connectedAt, res, speed, failures)
+				emitStatus(status, StatusUpdate{
+					Phase:       PhaseMonitoring,
+					NodeName:    displayName(cand),
+					Protocol:    cand.Scheme,
+					Ping:        res.AvgLatency,
+					Speed:       speed,
+					ProbeOK:     res.Successes,
+					ProbeTotal:  res.TargetCount,
+					Failures:    failures,
+					ConnectedAt: connectedAt,
+					SocksAddr:   cfg.ListenSocksAddr,
+					HTTPAddr:    cfg.ListenHTTPAddr,
+				})
 				continue
 			}
 			failures++
 			printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, 0, connectedAt, res, 0, failures)
+			emitStatus(status, StatusUpdate{
+				Phase:       PhaseMonitoring,
+				NodeName:    displayName(cand),
+				Protocol:    cand.Scheme,
+				Ping:        res.AvgLatency,
+				ProbeOK:     res.Successes,
+				ProbeTotal:  res.TargetCount,
+				Failures:    failures,
+				ConnectedAt: connectedAt,
+				SocksAddr:   cfg.ListenSocksAddr,
+				HTTPAddr:    cfg.ListenHTTPAddr,
+			})
 			if failures >= cfg.MonitorFailLimit {
 				return fmt.Errorf("health checks failed %d times", failures)
 			}

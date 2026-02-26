@@ -107,7 +107,7 @@ func TestConnectAndMonitorFailoverToNextCandidate(t *testing.T) {
 		{Raw: "vmess://second", Name: "second"},
 	}
 
-	err := connectAndMonitor(ctx, cfg, ranked, adapter, "mockbin")
+	err := connectAndMonitor(ctx, cfg, ranked, nil, adapter, "mockbin")
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context canceled after failover to second candidate, got: %v", err)
 	}

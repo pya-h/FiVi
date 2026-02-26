@@ -57,7 +57,7 @@ func TestRunLogProgressReporterEmitsSnapshots(t *testing.T) {
 	logs := make([]string, 0, 4)
 	runDone := make(chan struct{})
 	go func() {
-		runLogProgressReporter(ctx, events, 10*time.Millisecond, func(format string, args ...any) {
+		runLogProgressReporter(ctx, events, nil, 10*time.Millisecond, func(format string, args ...any) {
 			logs = append(logs, fmt.Sprintf(format, args...))
 		})
 		close(runDone)

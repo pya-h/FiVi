@@ -12,12 +12,12 @@ import (
 
 type progressLogger func(format string, args ...any)
 
-func RunLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEvent, interval time.Duration) {
-	runLogProgressReporter(ctx, events, interval, logx.Infof)
+func RunLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate, interval time.Duration) {
+	runLogProgressReporter(ctx, events, status, interval, logx.Infof)
 }
 
-func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEvent, interval time.Duration, logger progressLogger) {
-	if events == nil || logger == nil {
+func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate, interval time.Duration, logger progressLogger) {
+	if logger == nil {
 		return
 	}
 	if interval <= 0 {
@@ -28,6 +28,7 @@ func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEven
 	defer ticker.Stop()
 
 	state := newProgressState()
+	var lastPhase engine.Phase
 	for {
 		select {
 		case <-ctx.Done():
@@ -37,12 +38,43 @@ func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEven
 			return
 		case event, ok := <-events:
 			if !ok {
-				if state.eventCount > 0 {
-					logger("progress snapshot: %s", state.snapshot())
+				events = nil
+				if status == nil {
+					if state.eventCount > 0 {
+						logger("progress snapshot: %s", state.snapshot())
+					}
+					return
 				}
-				return
+				continue
 			}
 			state.observe(event)
+		case update, ok := <-status:
+			if !ok {
+				status = nil
+				if events == nil {
+					if state.eventCount > 0 {
+						logger("progress snapshot: %s", state.snapshot())
+					}
+					return
+				}
+				continue
+			}
+			if update.Phase != lastPhase {
+				lastPhase = update.Phase
+				switch update.Phase {
+				case engine.PhaseDiscovering:
+					logger("phase: discovering (%d candidates)", update.TotalCands)
+				case engine.PhaseConnecting:
+					logger("phase: connecting to %s [%s]", update.NodeName, update.Protocol)
+				case engine.PhaseMonitoring:
+					logger("phase: monitoring %s (socks=%s http=%s)", update.NodeName, update.SocksAddr, update.HTTPAddr)
+				case engine.PhaseFailover:
+					logger("phase: failover triggered")
+				}
+			}
+			if update.Phase == engine.PhaseMonitoring && update.Ping > 0 {
+				logger("health: ping=%s probes=%d/%d failures=%d", update.Ping.Round(time.Millisecond), update.ProbeOK, update.ProbeTotal, update.Failures)
+			}
 		case <-ticker.C:
 			if state.eventCount == 0 {
 				continue

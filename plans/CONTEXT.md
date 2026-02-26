@@ -584,3 +584,184 @@ After each completed task, append a section to this file:
 - `go build ./...` passed.
 - Next task or blocker:
 - None.
+
+## Feature Update: V2rayN-Quality Connection Configs + Status Events + UI Redesign (2026-02-27)
+
+### Motivation
+- FiVi generated minimal engine configs lacking DNS resolution, traffic sniffing, private-IP routing, and domain strategy — features V2rayN includes by default. This caused DNS leaks, unnecessary proxy routing of local traffic, and suboptimal connection behavior.
+- The TUI dashboard lacked phase awareness (discovery vs connected), color coding, progress bars, and became stale after discovery completed.
+- No mechanism existed to communicate engine phase transitions (discovering → connecting → monitoring → failover) to the UI layer.
+
+### Area 1: V2rayN-Quality Connection Configs
+
+#### 1A. Xray config improvements — `internal/xray/config.go`
+- Summary of changes:
+  - Added DNS section with remote DNS server (`8.8.8.8:53`) for proxy-bound name resolution.
+  - Enabled sniffing on both SOCKS and HTTP inbounds: `"sniffing": {"enabled": true, "destOverride": ["http", "tls"]}`.
+  - Changed `domainStrategy` to `"IPIfNonMatch"` — enables IP-based routing after domain resolution.
+  - Added private-IP direct routing rule before catch-all proxy rule using explicit CIDR ranges (avoiding `geoip.dat` dependency): `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, ::1/128, fc00::/7, fe80::/10`.
+  - Added `privateIPRanges()` helper function.
+- Files touched:
+  - `internal/xray/config.go`
+  - `internal/xray/config_test.go`
+- Test: `TestBuildRuntimeConfigHasDNSSniffingAndRouting` — verifies DNS section, IPIfNonMatch domainStrategy, private IP direct rule, sniffing on both inbounds.
+
+#### 1B. Singbox config improvements — `internal/engines/singbox.go`
+- Summary of changes:
+  - Added `"sniff": true, "sniff_override_destination": true` to SOCKS/HTTP inbounds.
+  - Added `"sniff": true, "sniff_override_destination": true, "endpoint_independent_nat": true` to TUN inbound (tunnel mode).
+  - Added full DNS config:
+    - Remote DNS (`tls://8.8.8.8`) via proxy detour for domain resolution through tunnel.
+    - Local DNS (`223.5.5.5`) via direct detour for resolving proxy server address itself.
+    - DNS loop prevention rule: `"outbound": "any"` → `"server": "local-dns"` (prevents proxy trying to resolve its own server through itself).
+    - Strategy: `"prefer_ipv4"`.
+  - Added `dns-out` outbound: `{"type": "dns", "tag": "dns-out"}`.
+  - Added route rules (before catch-all proxy rule):
+    - `{"protocol": "dns", "outbound": "dns-out"}` — routes DNS protocol to DNS handler.
+    - `{"ip_is_private": true, "outbound": "direct"}` — routes private IPs directly (built-in singbox field, no data file needed).
+- Files touched:
+  - `internal/engines/singbox.go`
+  - `internal/engines/singbox_test.go`
+- Tests: `TestSingboxProxyModeHasDNSAndSniffing`, `TestSingboxTunnelModeHasNATAndSniffing`.
+
+### Area 2: Status Event System
+
+#### 2A. Phase and StatusUpdate types — `internal/engine/events.go`
+- Summary of changes:
+  - Added `Phase` type with constants: `PhaseDiscovering`, `PhaseConnecting`, `PhaseMonitoring`, `PhaseFailover`.
+  - Added `StatusUpdate` struct: Phase, NodeName, Protocol, Ping, Speed, ProbeOK, ProbeTotal, Failures, TotalCands, ConnectedAt, SocksAddr, HTTPAddr, Timestamp.
+  - Added `emitStatus()` helper — non-blocking send, nil-safe, auto-timestamps.
+- Files touched:
+  - `internal/engine/events.go`
+  - `internal/engine/events_test.go`
+- Tests: `TestEmitStatusNilChannelNoOp`, `TestEmitStatusDoesNotBlockWhenFull`, `TestEmitStatusSetsTimestamp`.
+
+#### 2B. Status channel threading — `internal/engine/engine.go`
+- Summary of changes:
+  - Added `status chan<- StatusUpdate` parameter to: `RunWithEvents`, `RunWithAdapter`, `discoverAndRank`, `connectAndMonitor`, `monitorConnection`.
+  - `Run()` passes nil for both event and status channels.
+  - Added `emitStatus` calls at:
+    - Start of discovery (`PhaseDiscovering`).
+    - After candidate normalization (with `TotalCands` count).
+    - On connecting to a candidate (`PhaseConnecting` with node info).
+    - On entering monitoring loop (`PhaseMonitoring` with full connection info).
+    - Each health check tick in `monitorConnection` (updated ping/probes/failures).
+    - On failover trigger (`PhaseFailover`).
+- Files touched:
+  - `internal/engine/engine.go`
+  - `internal/engine/failover_integration_test.go` (updated `connectAndMonitor` call signature to include `nil` status channel)
+
+#### 2C. Channel wiring — `main.go`
+- Summary of changes:
+  - Created `status` channel (capacity 64) alongside `events` channel in `runWithMode`.
+  - Passed status channel through `runTUI` and `runLogMode`.
+  - Both code paths properly close the status channel when the engine goroutine finishes.
+- Files touched:
+  - `main.go`
+
+### Area 3: UI Dashboard Redesign
+
+#### 3A-C. Dashboard rewrite — `internal/ui/dashboard.go`
+- Summary of changes:
+  - Added `statusUpdateMsg` type and `waitStatusUpdateCmd` for Bubble Tea message loop.
+  - Added `healthCheckEntry` struct for tracking health check history.
+  - Expanded `dashboardModel` with: phase, totalCands, connection state fields (connectedNode, connProtocol, connectedAt, lastPing, lastSpeed, lastProbeOK, lastProbeTotal, connFailures, socksAddr, httpAddr), healthHistory.
+  - `RunDashboard` and `newDashboardModel` now accept `status <-chan engine.StatusUpdate`.
+  - `Init()` batches 3 commands: worker events, status updates, clock tick.
+  - `Update()` handles `statusUpdateMsg`: updates phase, connection state, health history (last 20 entries).
+  - Phase-aware `View()` dispatches to `viewDiscovery()` or `viewMonitoring()`.
+  - **Discovery phase view**: progress bar (Unicode block characters with percentage), color-coded stats (green=working, yellow=probable, red=failed), active stages, connecting/failover indicator, color-coded worker table with active workers sorted first.
+  - **Monitoring phase view**: node info (name, protocol, uptime), connection metrics (ping, speed, probes, status with green OK / red DEGRADED), proxy addresses (SOCKS5, HTTP), scrollable health check history table (timestamped, most recent first).
+  - `renderColorWorkerTable()`: active workers sorted to top, status icons (`+` ok, `x` failed, `*` running, `~` probable), color-coded via Lipgloss.
+  - `renderProgressBar()`: Unicode `▓`/`░` characters with percentage and count.
+  - `formatElapsed()`: Shows ms or seconds as appropriate.
+  - Lipgloss styles defined as package-level vars (title, label, green, red, yellow, dim).
+- Files touched:
+  - `internal/ui/dashboard.go`
+  - `internal/ui/dashboard_test.go`
+- Tests: Updated all `newDashboardModel` calls for new 3-param signature; added `TestDashboardPhaseTransition`, `TestDashboardMonitoringView`, `TestRenderProgressBar`, `TestFormatElapsed`.
+
+#### 3D. Log mode progress reporter — `internal/ui/progress.go`
+- Summary of changes:
+  - Updated `RunLogProgressReporter` and `runLogProgressReporter` signatures to accept `status <-chan engine.StatusUpdate`.
+  - Added select on status channel in main loop.
+  - Logs phase transitions: `"phase: discovering (N candidates)"`, `"phase: connecting to <node> [<proto>]"`, `"phase: monitoring <node> (socks=... http=...)"`, `"phase: failover triggered"`.
+  - Logs health check metrics during monitoring: `"health: ping=... probes=N/M failures=F"`.
+  - Handles both channels closing independently (returns when both are nil).
+- Files touched:
+  - `internal/ui/progress.go`
+  - `internal/ui/progress_test.go`
+- Tests: Updated `runLogProgressReporter` calls for new 5-param signature.
+
+### Validation
+- `go build ./...` — compiles cleanly.
+- `go test ./...` — all tests pass across all packages:
+  - `fivi/internal/engine` (0.209s)
+  - `fivi/internal/engines` (0.003s)
+  - `fivi/internal/ui` (0.029s)
+  - `fivi/internal/xray` (0.003s)
+  - All other packages: cached/passed.
+
+### Architecture Summary After This Update
+
+```
+main.go
+├── config.ParseFlags()
+├── ui.DetectMode() → TUI / Log
+├── runWithMode()
+│   ├── events chan engine.WorkerEvent (cap: workers*8, min 128)
+│   ├── status chan engine.StatusUpdate (cap: 64)
+│   ├── runTUI() → engine.RunWithEvents() + ui.RunDashboard()
+│   └── runLogMode() → engine.RunWithEvents() + ui.RunLogProgressReporter()
+│
+engine/
+├── RunWithEvents(ctx, cfg, events, status) → RunWithAdapter()
+│   ├── discoverAndRank() → emitStatus(PhaseDiscovering)
+│   │   ├── fetch sources → decode → parse → normalize
+│   │   ├── validateCandidates() worker pool → emitStageEvent per stage
+│   │   └── rank by score → return Ranked[]
+│   └── connectAndMonitor() → emitStatus(PhaseConnecting/Monitoring)
+│       ├── startCandidate() via adapter
+│       ├── waitForProxyReady()
+│       └── monitorConnection() → emitStatus(PhaseMonitoring per tick, PhaseFailover on fail)
+│
+engines/
+├── Adapter interface { Name, EnsureBinary, BuildRuntimeConfigFromURI, Start }
+├── XrayAdapter → internal/xray (DNS, sniffing, IPIfNonMatch, private IP routing)
+├── SingboxAdapter → singbox binary (DNS with remote/local, sniffing, dns-out, ip_is_private, NAT)
+│
+ui/
+├── dashboard.go — Bubble Tea TUI (phase-aware: discovery view + monitoring view)
+├── progress.go — Log mode reporter (phase transitions + health metrics)
+├── mode.go — TTY detection and mode selection
+```
+
+### Key Design Decisions
+1. **Explicit CIDR ranges** for xray private IP routing instead of `geoip:private` — avoids `geoip.dat` file dependency.
+2. **Built-in `ip_is_private`** for singbox private IP routing — uses singbox's native field, no data files.
+3. **DNS loop prevention** in singbox via `"outbound": "any"` → local-dns rule — prevents proxy from resolving its own server address through itself.
+4. **Separate `StatusUpdate` channel** instead of overloading `WorkerEvent` — clean separation between per-worker progress events and engine-level phase/health state.
+5. **Phase-aware UI** with smooth discovery → monitoring transition — dashboard completely restructures its view rather than accumulating stale worker rows.
+6. **Non-blocking event emission** throughout — `emitStatus()` and `emitStageEvent()` use select-default to never block the engine.
+
+### Files Modified (complete list)
+| # | File | Changes |
+|---|------|---------|
+| 1 | `internal/xray/config.go` | DNS, sniffing, IPIfNonMatch, private IP routing, `privateIPRanges()` |
+| 2 | `internal/xray/config_test.go` | `TestBuildRuntimeConfigHasDNSSniffingAndRouting` |
+| 3 | `internal/engines/singbox.go` | DNS, sniffing, dns-out, ip_is_private, NAT |
+| 4 | `internal/engines/singbox_test.go` | `TestSingboxProxyModeHasDNSAndSniffing`, `TestSingboxTunnelModeHasNATAndSniffing` |
+| 5 | `internal/engine/events.go` | Phase, StatusUpdate, emitStatus |
+| 6 | `internal/engine/events_test.go` | emitStatus tests (nil-safe, non-blocking, auto-timestamp) |
+| 7 | `internal/engine/engine.go` | Thread status channel, emitStatus at all phase transitions |
+| 8 | `internal/engine/failover_integration_test.go` | Updated `connectAndMonitor` call signature |
+| 9 | `main.go` | Create/wire status channel through TUI and log modes |
+| 10 | `internal/ui/dashboard.go` | Full redesign: phases, colors, progress bar, monitoring view, health history |
+| 11 | `internal/ui/progress.go` | Accept status channel, log phase transitions and health metrics |
+| 12 | `internal/ui/dashboard_test.go` | Updated signatures, phase transition, monitoring view, progress bar, elapsed tests |
+| 13 | `internal/ui/progress_test.go` | Updated `runLogProgressReporter` call signature |
+
+### Next Recommended Work
+- Optional: Manual end-to-end verification with real xray/singbox binary to confirm TUI phase transitions render correctly.
+- Optional: Add README section documenting the new connection config improvements and TUI phases.
+- Optional: CI smoke profiles for both engines.

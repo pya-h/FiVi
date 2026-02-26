@@ -72,3 +72,43 @@ func emitStageEvent(
 	default:
 	}
 }
+
+// Phase represents the engine's operational phase.
+type Phase string
+
+const (
+	PhaseDiscovering Phase = "discovering"
+	PhaseConnecting  Phase = "connecting"
+	PhaseMonitoring  Phase = "monitoring"
+	PhaseFailover    Phase = "failover"
+)
+
+// StatusUpdate carries engine phase transitions and connection health data.
+type StatusUpdate struct {
+	Phase       Phase
+	NodeName    string
+	Protocol    string
+	Ping        time.Duration
+	Speed       float64 // Mbps, 0 if not measured
+	ProbeOK     int
+	ProbeTotal  int
+	Failures    int // consecutive monitor failures
+	TotalCands  int // total candidates in current round
+	ConnectedAt time.Time
+	SocksAddr   string
+	HTTPAddr    string
+	Timestamp   time.Time
+}
+
+func emitStatus(ch chan<- StatusUpdate, update StatusUpdate) {
+	if ch == nil {
+		return
+	}
+	if update.Timestamp.IsZero() {
+		update.Timestamp = time.Now()
+	}
+	select {
+	case ch <- update:
+	default:
+	}
+}
