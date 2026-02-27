@@ -13,9 +13,11 @@ import (
 	"sync"
 	"time"
 
+	"fivi/internal/cleanup"
 	"fivi/internal/config"
 	"fivi/internal/engines"
 	"fivi/internal/fetch"
+	"fivi/internal/latency"
 	"fivi/internal/logx"
 	"fivi/internal/parser"
 	"fivi/internal/probe"
@@ -45,6 +47,7 @@ const (
 	FailureReasonEngineNotReady   FailureReason = "engine_not_ready"
 	FailureReasonProbeFailed      FailureReason = "probe_failed"
 	FailureReasonProbePartial     FailureReason = "probe_partial"
+	FailureReasonLatencyReject    FailureReason = "candidate_latency_reject"
 )
 
 type ProbableCandidate struct {
@@ -78,7 +81,20 @@ var (
 	waitForProxyReadyFn = waitForProxyReady
 	reserveLocalAddrsFn = reserveLocalAddrs
 	enableSystemProxyFn = sysproxy.Enable
+	cleanupMgr          *cleanup.Manager
 )
+
+// SetCleanupManager sets the global cleanup manager used by the engine to
+// register safety-net cleanup hooks (proxy restore, engine kill).
+func SetCleanupManager(m *cleanup.Manager) {
+	cleanupMgr = m
+}
+
+func registerCleanup(name string, fn func()) {
+	if cleanupMgr != nil {
+		cleanupMgr.Register(name, fn)
+	}
+}
 
 func splitHostPort(addr string) (string, int) {
 	host, portStr, err := net.SplitHostPort(addr)
@@ -102,6 +118,21 @@ func RunWithEvents(ctx context.Context, cfg config.AppConfig, events chan<- Work
 	return RunWithAdapter(ctx, cfg, events, status, adapter)
 }
 
+// warmStandby holds pre-validated configs for instant failover.
+type warmStandby struct {
+	configs   []Ranked
+	createdAt time.Time
+}
+
+func (w *warmStandby) isValid(ttl time.Duration) bool {
+	if w == nil || len(w.configs) == 0 || ttl <= 0 {
+		return false
+	}
+	return time.Since(w.createdAt) < ttl
+}
+
+const warmStandbyMaxConfigs = 3
+
 func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- WorkerEvent, status chan<- StatusUpdate, adapter engines.Adapter) error {
 	if adapter == nil {
 		adapter = engines.NewXrayAdapter()
@@ -114,6 +145,8 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 		return err
 	}
 	health := sources.NewHealthTracker(cfg.BootstrapSources)
+
+	var standby *warmStandby
 
 	for {
 		select {
@@ -135,9 +168,30 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 			continue
 		}
 
+		// Save top configs as warm standbys for future failover.
+		n := warmStandbyMaxConfigs
+		if n > len(ranked) {
+			n = len(ranked)
+		}
+		standby = &warmStandby{
+			configs:   append([]Ranked(nil), ranked[:n]...),
+			createdAt: time.Now(),
+		}
+
 		if err := connectAndMonitor(ctx, cfg, ranked, status, adapter, engineBin); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
+			}
+			// Try warm standby configs before full rediscovery.
+			if standby.isValid(cfg.StandbyTTL) {
+				logx.Infof("trying %d warm standby configs before rediscovery", len(standby.configs))
+				emitStatus(status, StatusUpdate{Phase: PhaseWarmFailover})
+				if warmErr := connectAndMonitor(ctx, cfg, standby.configs, status, adapter, engineBin); warmErr == nil {
+					continue
+				} else if errors.Is(warmErr, context.Canceled) {
+					return warmErr
+				}
+				logx.Warnf("warm standby configs exhausted; falling back to full rediscovery")
 			}
 			logx.Warnf("all ranked nodes failed; rediscovering: %v", err)
 			sleepWithCancel(ctx, cfg.RetryBackoff)
@@ -198,6 +252,23 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 		return nil, fmt.Errorf("no candidates after normalize")
 	}
 	logx.Infof("fetched %d raw links, %d unique candidates after dedup", len(all), len(cands))
+
+	// Latency pre-scan: TCP connect to server addresses, reject slow/unreachable.
+	if cfg.LatencyCutoff > 0 {
+		logx.Infof("latency pre-scan: checking %d candidates (cutoff=%s)", len(cands), cfg.LatencyCutoff)
+		dialTimeout := 2 * time.Second
+		if cfg.LatencyCutoff < dialTimeout {
+			dialTimeout = cfg.LatencyCutoff
+		}
+		cands, latencyRejected := latency.ScanBatch(ctx, cands, dialTimeout, cfg.LatencyCutoff, 50)
+		if latencyRejected > 0 {
+			logx.Infof("latency pre-scan: rejected %d unreachable/slow candidates, %d remaining", latencyRejected, len(cands))
+		}
+		if len(cands) == 0 {
+			return nil, fmt.Errorf("no candidates after latency pre-scan")
+		}
+	}
+
 	logx.Infof("testing %d candidates with %d workers", len(cands), cfg.Workers)
 	emitStatus(status, StatusUpdate{Phase: PhaseDiscovering, TotalCands: len(cands)})
 
@@ -453,69 +524,113 @@ func isListeningAddr(addr string) bool {
 	return true
 }
 
+const (
+	autoReconnectMaxAttempts = 3
+	autoReconnectBaseBackoff = 2 * time.Second
+	autoReconnectMaxBackoff  = 30 * time.Second
+)
+
 func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranked, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) error {
 	for i := 0; i < len(ranked); i++ {
 		cand := ranked[i]
-		emitStatus(status, StatusUpdate{
-			Phase:    PhaseConnecting,
-			NodeName: displayName(cand),
-			Protocol: cand.Scheme,
-		})
-		inst, initialProbe, initialSpeed, err := startCandidate(ctx, cfg, cand.Raw, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, adapter, engineBin)
-		if err != nil {
-			logx.Warnf("connect failed for %s: %v", displayName(cand), err)
-			continue
+
+		err := connectAndMonitorOne(ctx, cfg, cand, status, adapter, engineBin)
+		if err == nil || errors.Is(err, context.Canceled) {
+			return err
 		}
 
-		connectedAt := time.Now()
-		if cfg.IsTunnelMode() {
-			logx.Infof("tunnel mode active: all system traffic is routed through the proxy")
-		}
+		// Auto-reconnect: retry the same config with exponential backoff
+		// before moving to the next ranked candidate.
+		if cfg.AutoReconnect {
+			reconnected := false
+			backoff := autoReconnectBaseBackoff
+			for attempt := 1; attempt <= autoReconnectMaxAttempts; attempt++ {
+				logx.Infof("auto-reconnect attempt %d/%d for %s (backoff=%s)", attempt, autoReconnectMaxAttempts, displayName(cand), backoff)
+				sleepWithCancel(ctx, backoff)
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
 
-		// In proxy mode, configure system proxy so browsers use the connection.
-		var restoreProxy func()
-		if !cfg.IsTunnelMode() {
-			socksHost, socksPort := splitHostPort(cfg.ListenSocksAddr)
-			httpHost, httpPort := splitHostPort(cfg.ListenHTTPAddr)
-			restore, proxyErr := enableSystemProxyFn(socksHost, socksPort, httpHost, httpPort)
-			if proxyErr != nil {
-				logx.Warnf("system proxy setup failed: %v (browsers need manual proxy config)", proxyErr)
-			} else {
-				restoreProxy = restore
-				logx.Infof("system proxy configured (socks=%s, http=%s)", cfg.ListenSocksAddr, cfg.ListenHTTPAddr)
+				retryErr := connectAndMonitorOne(ctx, cfg, cand, status, adapter, engineBin)
+				if retryErr == nil || errors.Is(retryErr, context.Canceled) {
+					return retryErr
+				}
+				logx.Warnf("auto-reconnect attempt %d failed for %s: %v", attempt, displayName(cand), retryErr)
+
+				backoff *= 2
+				if backoff > autoReconnectMaxBackoff {
+					backoff = autoReconnectMaxBackoff
+				}
+			}
+			if !reconnected {
+				logx.Warnf("auto-reconnect exhausted for %s, trying next candidate", displayName(cand))
 			}
 		}
 
-		printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID(), connectedAt, initialProbe, initialSpeed, 0)
-		emitStatus(status, StatusUpdate{
-			Phase:       PhaseMonitoring,
-			NodeName:    displayName(cand),
-			Protocol:    cand.Scheme,
-			Ping:        initialProbe.AvgLatency,
-			Speed:       initialSpeed,
-			ProbeOK:     initialProbe.Successes,
-			ProbeTotal:  initialProbe.TargetCount,
-			ConnectedAt: connectedAt,
-			SocksAddr:   cfg.ListenSocksAddr,
-			HTTPAddr:    cfg.ListenHTTPAddr,
-		})
-		monitorErr := monitorConnection(ctx, cfg, cand, connectedAt, status)
-		if restoreProxy != nil {
-			restoreProxy()
-			logx.Infof("system proxy restored")
-		}
-		inst.Stop()
-		if monitorErr == nil || errors.Is(monitorErr, context.Canceled) {
-			return monitorErr
-		}
 		emitStatus(status, StatusUpdate{
 			Phase:    PhaseFailover,
 			NodeName: displayName(cand),
 			Protocol: cand.Scheme,
 		})
-		logx.Warnf("connection degraded for %s: %v", displayName(cand), monitorErr)
+		logx.Warnf("connection degraded for %s: %v", displayName(cand), err)
 	}
 	return fmt.Errorf("exhausted %d ranked nodes", len(ranked))
+}
+
+func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) error {
+	emitStatus(status, StatusUpdate{
+		Phase:    PhaseConnecting,
+		NodeName: displayName(cand),
+		Protocol: cand.Scheme,
+	})
+	inst, initialProbe, initialSpeed, err := startCandidate(ctx, cfg, cand.Raw, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, adapter, engineBin)
+	if err != nil {
+		return fmt.Errorf("connect failed: %w", err)
+	}
+
+	connectedAt := time.Now()
+	if cfg.IsTunnelMode() {
+		logx.Infof("tunnel mode active: all system traffic is routed through the proxy")
+	}
+
+	// Register engine instance for safety-net cleanup on crash/signal.
+	registerCleanup("stop engine process", func() { inst.Stop() })
+
+	// In proxy mode, configure system proxy so browsers use the connection.
+	var restoreProxy func()
+	if !cfg.IsTunnelMode() {
+		socksHost, socksPort := splitHostPort(cfg.ListenSocksAddr)
+		httpHost, httpPort := splitHostPort(cfg.ListenHTTPAddr)
+		restore, proxyErr := enableSystemProxyFn(socksHost, socksPort, httpHost, httpPort)
+		if proxyErr != nil {
+			logx.Warnf("system proxy setup failed: %v (browsers need manual proxy config)", proxyErr)
+		} else {
+			restoreProxy = restore
+			registerCleanup("restore system proxy", restore)
+			logx.Infof("system proxy configured (socks=%s, http=%s)", cfg.ListenSocksAddr, cfg.ListenHTTPAddr)
+		}
+	}
+
+	printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID(), connectedAt, initialProbe, initialSpeed, 0)
+	emitStatus(status, StatusUpdate{
+		Phase:       PhaseMonitoring,
+		NodeName:    displayName(cand),
+		Protocol:    cand.Scheme,
+		Ping:        initialProbe.AvgLatency,
+		Speed:       initialSpeed,
+		ProbeOK:     initialProbe.Successes,
+		ProbeTotal:  initialProbe.TargetCount,
+		ConnectedAt: connectedAt,
+		SocksAddr:   cfg.ListenSocksAddr,
+		HTTPAddr:    cfg.ListenHTTPAddr,
+	})
+	monitorErr := monitorConnection(ctx, cfg, cand, connectedAt, status)
+	if restoreProxy != nil {
+		restoreProxy()
+		logx.Infof("system proxy restored")
+	}
+	inst.Stop()
+	return monitorErr
 }
 
 func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, connectedAt time.Time, status chan<- StatusUpdate) error {
@@ -591,13 +706,31 @@ func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr
 		inst.Stop()
 		return nil, probe.Result{}, 0, err
 	}
-	res := checkThroughSOCKSFn(ctx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
-	if !isProbeQualified(cfg, res) {
-		inst.Stop()
-		return nil, probe.Result{}, 0, fmt.Errorf("initial probe failed success=%d/%d", res.Successes, len(cfg.Targets))
+
+	// Post-connect verification loop: retry connectivity check to catch cases
+	// where the proxy port is listening but the tunnel is not yet established.
+	retries := cfg.VerifyRetries
+	if retries < 1 {
+		retries = 1
 	}
-	speed, _ := measureDownloadFn(ctx, socksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
-	return inst, res, speed, nil
+	var res probe.Result
+	for attempt := 1; attempt <= retries; attempt++ {
+		res = checkThroughSOCKSFn(ctx, socksAddr, cfg.Targets, cfg.ProbeTimeout)
+		if isProbeQualified(cfg, res) {
+			speed, _ := measureDownloadFn(ctx, socksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
+			return inst, res, speed, nil
+		}
+		if attempt < retries {
+			logx.Warnf("verification attempt %d/%d failed (success=%d/%d), retrying in 2s", attempt, retries, res.Successes, res.TargetCount)
+			sleepWithCancel(ctx, 2*time.Second)
+			if ctx.Err() != nil {
+				inst.Stop()
+				return nil, probe.Result{}, 0, ctx.Err()
+			}
+		}
+	}
+	inst.Stop()
+	return nil, probe.Result{}, 0, fmt.Errorf("post-connect verification failed after %d attempts (success=%d/%d)", retries, res.Successes, res.TargetCount)
 }
 
 func isProbeQualified(cfg config.AppConfig, res probe.Result) bool {

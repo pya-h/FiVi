@@ -77,10 +77,11 @@ func emitStageEvent(
 type Phase string
 
 const (
-	PhaseDiscovering Phase = "discovering"
-	PhaseConnecting  Phase = "connecting"
-	PhaseMonitoring  Phase = "monitoring"
-	PhaseFailover    Phase = "failover"
+	PhaseDiscovering   Phase = "discovering"
+	PhaseConnecting    Phase = "connecting"
+	PhaseMonitoring    Phase = "monitoring"
+	PhaseFailover      Phase = "failover"
+	PhaseWarmFailover  Phase = "warm_failover"
 )
 
 // StatusUpdate carries engine phase transitions and connection health data.

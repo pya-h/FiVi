@@ -166,7 +166,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 
 ## Milestone I: Connection Resilience + Latency Pre-Scan + Graceful Cleanup
 
-37. [ ] `I1` Add latency pre-scanner to fast-reject unreachable configs.
+37. [x] `I1` Add latency pre-scanner to fast-reject unreachable configs.
 - Add `internal/latency` package with TCP connect scanner.
 - Extract server host:port from raw V2Ray URIs (parse vmess/vless/trojan/ss address fields).
 - Run batch TCP connect with 2s timeout, reject configs above `--latency-cutoff` (default 1500ms).
@@ -175,7 +175,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/latency/scanner.go`, `scanner_test.go`, integration in `engine.go`.
 - Done when: unreachable servers are skipped before spawning engine, test passes.
 
-38. [ ] `I2` Add post-connect verification loop.
+38. [x] `I2` Add post-connect verification loop.
 - After engine start and proxy readiness, retry connectivity check up to 5 times with 2s interval.
 - Only declare "connected" after first successful verification through the proxy.
 - Catches cases where proxy port is listening but tunnel is not yet established.
@@ -183,7 +183,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: updated `startCandidate()` in `engine.go`.
 - Done when: connection is verified before monitoring starts.
 
-39. [ ] `I3` Add warm standby for instant failover.
+39. [x] `I3` Add warm standby for instant failover.
 - After ranking, keep top-3 configs in memory as warm standbys.
 - On failover, try warm standby configs BEFORE triggering full rediscovery.
 - Warm configs expire after configurable TTL (default 10min, `--standby-ttl`).
@@ -191,7 +191,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: warm standby logic in `connectAndMonitor()`, new phase event.
 - Done when: failover tries standby configs first, falls back to rediscovery if all fail.
 
-40. [ ] `I4` Add graceful cleanup and signal handling.
+40. [x] `I4` Add graceful cleanup and signal handling.
 - Register SIGINT/SIGTERM handlers in `main.go`.
 - Cleanup sequence: restore system proxy → teardown TUN routes → kill engine → remove temp files.
 - Use `sync.Once` to prevent double cleanup.
@@ -199,7 +199,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/cleanup/cleanup.go`, signal wiring in `main.go`.
 - Done when: Ctrl+C cleanly restores proxy and tears down TUN, test passes.
 
-41. [ ] `I5` Add `--auto-reconnect` flag for reconnection without full rediscovery.
+41. [x] `I5` Add `--auto-reconnect` flag for reconnection without full rediscovery.
 - On monitor failure, try restarting the SAME config before trying next ranked config.
 - Exponential backoff: 2s, 4s, 8s, max 30s.
 - Max reconnect attempts per config: 3.

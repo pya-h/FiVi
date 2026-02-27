@@ -8,11 +8,16 @@ import (
 	"syscall"
 	"time"
 
+	"fivi/internal/cleanup"
 	"fivi/internal/config"
 	"fivi/internal/engine"
 	"fivi/internal/logx"
 	"fivi/internal/ui"
 )
+
+// cleanupMgr is the global cleanup manager. Engine code registers cleanup
+// hooks (proxy restore, TUN teardown, engine kill) via engine.SetCleanupManager.
+var cleanupMgr = cleanup.New()
 
 func main() {
 	// Handle subcommands before flag parsing.
@@ -27,6 +32,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Ensure cleanup runs on any exit path.
+	engine.SetCleanupManager(cleanupMgr)
+	defer cleanupMgr.Run()
+
 	mode := ui.DetectMode(cfg.NoTUI)
 	switch {
 	case mode == ui.ModeTUI:
@@ -40,6 +49,7 @@ func main() {
 	logx.Infof("fivi started with engine=%s, mode=%s, profile=%s, sources=%d, workers=%d", cfg.Engine, cfg.Mode, cfg.Profile, len(cfg.BootstrapSources), cfg.Workers)
 	if err := runWithMode(ctx, cfg, mode); err != nil && !errors.Is(err, context.Canceled) {
 		logx.Errorf("fatal: %v", err)
+		cleanupMgr.Run()
 		os.Exit(1)
 	}
 	logx.Infof("fivi stopped")

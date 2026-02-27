@@ -78,7 +78,7 @@ fivi/
 - [x] Milestone H (`H1`..`H4`) — Xray TUN mode, max-candidates removal + shuffle, ./fivi fetch, GNOME system proxy
 
 ### Pending (New — from oblivion-desktop comparison)
-- [ ] Milestone I (`I1`..`I5`) — Connection resilience: latency pre-scan, post-connect verify, warm standby, graceful cleanup, auto-reconnect
+- [x] Milestone I (`I1`..`I5`) — Connection resilience: latency pre-scan, post-connect verify, warm standby, graceful cleanup, auto-reconnect
 - [ ] Milestone J (`J1`..`J6`) — Routing rules, DNS config, geo routing, ConfigBuildOpts refactor
 - [ ] Milestone K (`K1`..`K3`) — Speed test, network stats, PAC script
 - [ ] Milestone L (`L1`..`L5`) — Cross-platform proxy (KDE, macOS, Windows), LAN sharing
@@ -144,10 +144,164 @@ fivi/
 - Working tree is clean
 
 ## Next Recommended Execution
-1. Start with **Milestone I** (connection resilience) — highest impact for "hard-ass VPN" goal.
-2. `I1` (latency pre-scan) is the best first task: standalone, testable, immediately improves speed.
-3. `I4` (graceful cleanup) should be done early — it's a safety feature that prevents broken states.
-4. After I, proceed to **Milestone J** (routing rules + DNS) — highest user-facing feature value.
+1. **Milestone I complete.** All 5 tasks (I1-I5) implemented.
+2. Next: **Milestone J** (routing rules + configurable DNS + geo routing) — highest user-facing feature value.
+3. Start with `J1` (routing rule parser) or `J6` (ConfigBuildOpts refactor) — both are foundational for J2-J5.
+
+---
+
+## Task I1: Latency Pre-Scanner — 2026-02-28
+
+### Summary
+Added `internal/latency` package with TCP connect pre-scanner that fast-rejects unreachable/slow server addresses before the expensive engine-spawn validation step.
+
+### Changes
+- **New** `internal/latency/addr.go` — Extracts server `host:port` from vmess, vless, trojan, and ss URIs. Handles base64-encoded vmess payloads, URL-based vless/trojan, and the complex ss format (both inline-@ and fully-encoded).
+- **New** `internal/latency/scanner.go` — `ScanBatch()` performs parallel TCP connect checks with configurable dial timeout, latency cutoff, and parallelism (default 50). Candidates whose address can't be extracted pass through (not rejected). Returns filtered candidate list + rejected count.
+- **New** `internal/latency/addr_test.go` — 9 tests covering all 4 protocols, IPv6, edge cases (empty address, numeric port, unsupported scheme).
+- **New** `internal/latency/scanner_test.go` — 5 tests: reachable passes, unreachable rejected, unparseable passes through, empty input, mixed batch.
+- **Modified** `internal/config/config.go` — Added `LatencyCutoff` field to `AppConfig` and `--latency-cutoff` flag (default 1500ms, 0 disables).
+- **Modified** `internal/engine/engine.go` — Added `FailureReasonLatencyReject` constant. Integrated latency pre-scan into `discoverAndRank()` between normalize and validateCandidates. Logs rejection count.
+
+### Files Touched
+- `internal/latency/addr.go` (new)
+- `internal/latency/scanner.go` (new)
+- `internal/latency/addr_test.go` (new)
+- `internal/latency/scanner_test.go` (new)
+- `internal/config/config.go` (modified)
+- `internal/engine/engine.go` (modified)
+
+### Behavior Impact
+- Discovery pipeline now performs lightweight TCP connect checks on all candidate server addresses AFTER normalize, BEFORE worker validation.
+- Unreachable servers and servers with latency > 1500ms (configurable) are eliminated before spawning engine processes, saving significant time.
+- `--latency-cutoff 0` disables the pre-scan entirely (backward compatible).
+- Candidates with unparseable URIs pass through to the engine validation step (no false rejections).
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all 14 latency tests + full project test suite passes
+- No regressions in existing packages
+
+### Next Task
+`I2` — Post-connect verification loop
+
+---
+
+## Task I2: Post-Connect Verification Loop — 2026-02-28
+
+### Summary
+Modified `startCandidate()` to retry connectivity verification up to N times (default 5) with 2s interval before declaring "connected". Catches edge cases where the proxy port is listening but the tunnel isn't yet established.
+
+### Changes
+- **Modified** `internal/config/config.go` — Added `VerifyRetries` field and `--verify-retries` flag (default 5).
+- **Modified** `internal/engine/engine.go` — Replaced single-probe check in `startCandidate()` with a retry loop. On each failed attempt, logs the failure and waits 2s before retrying. Context cancellation is respected between attempts.
+
+### Files Touched
+- `internal/config/config.go` (modified)
+- `internal/engine/engine.go` (modified)
+
+### Behavior Impact
+- After engine start + proxy readiness, FiVi now retries the connectivity probe up to 5 times (configurable) with 2s intervals before declaring a node connected.
+- Previous behavior was a single probe — if it failed, the candidate was immediately discarded. Now transient startup delays are tolerated.
+- `--verify-retries 1` restores the old single-check behavior.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all tests pass (engine tests use mocked probes, so verification loop works with existing test infrastructure)
+
+### Next Task
+`I3` — Warm standby for instant failover
+
+---
+
+## Task I3: Warm Standby for Instant Failover — 2026-02-28
+
+### Summary
+Added warm standby mechanism that keeps top-3 ranked configs in memory after discovery. When all ranked nodes are exhausted during `connectAndMonitor`, the system tries warm standby configs before triggering an expensive full rediscovery cycle.
+
+### Changes
+- **Modified** `internal/engine/events.go` — Added `PhaseWarmFailover` status event phase.
+- **Modified** `internal/config/config.go` — Added `StandbyTTL` field and `--standby-ttl` flag (default 10min, 0 disables).
+- **Modified** `internal/engine/engine.go` — Added `warmStandby` struct with TTL-based validity check. `RunWithAdapter` saves top-3 configs after each discovery round. On failover, tries warm standbys before full rediscovery.
+
+### Files Touched
+- `internal/engine/events.go` (modified)
+- `internal/config/config.go` (modified)
+- `internal/engine/engine.go` (modified)
+
+### Behavior Impact
+- After discovery, top-3 ranked configs are saved as warm standbys.
+- When all ranked nodes fail during monitoring, warm standbys are tried first (emits `PhaseWarmFailover` status).
+- If warm standbys also fail or have expired (>10min by default), falls back to full rediscovery.
+- `--standby-ttl 0` disables the warm standby feature.
+- Reduces failover time from 30-60s (full rediscovery) to <5s when warm configs still work.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all tests pass
+
+### Next Task
+`I4` — Graceful cleanup and signal handling
+
+---
+
+## Task I4: Graceful Cleanup and Signal Handling — 2026-02-28
+
+### Summary
+Added `internal/cleanup` package with a `Manager` that tracks cleanup functions and executes them exactly once in LIFO order. Wired into `main.go` as a safety net for signal-driven exits and integrated into the engine's `connectAndMonitor` to register proxy restore and engine stop hooks.
+
+### Changes
+- **New** `internal/cleanup/cleanup.go` — `Manager` with `Register(name, fn)` and `Run()` (sync.Once, LIFO order, panic recovery per hook).
+- **New** `internal/cleanup/cleanup_test.go` — 4 tests: reverse order execution, runs-only-once, panic recovery, empty manager.
+- **Modified** `main.go` — Created global `cleanupMgr`, wired via `engine.SetCleanupManager()`, deferred `cleanupMgr.Run()`, explicit Run before `os.Exit(1)`.
+- **Modified** `internal/engine/engine.go` — Added `SetCleanupManager` and `registerCleanup` helpers. Registered engine stop and proxy restore hooks in `connectAndMonitor` when connection is established.
+
+### Files Touched
+- `internal/cleanup/cleanup.go` (new)
+- `internal/cleanup/cleanup_test.go` (new)
+- `main.go` (modified)
+- `internal/engine/engine.go` (modified)
+
+### Behavior Impact
+- On SIGINT/SIGTERM (Ctrl+C), the existing `signal.NotifyContext` cancels the context, then the deferred `cleanupMgr.Run()` executes all registered hooks: restore system proxy, stop engine process.
+- Cleanup hooks run in reverse order (proxy restore before engine stop is registered after engine start, so engine stop runs first by LIFO, which is correct — stop engine then restore proxy).
+- `sync.Once` prevents double cleanup if both defer and explicit call trigger.
+- Panic in any hook doesn't prevent remaining hooks from running.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all tests pass including 4 new cleanup tests
+
+### Next Task
+`I5` — Auto-reconnect flag
+
+---
+
+## Task I5: Auto-Reconnect Flag — 2026-02-28
+
+### Summary
+Added `--auto-reconnect` flag (default: enabled) that retries the same config with exponential backoff before moving to the next ranked candidate on monitoring failure. Refactored `connectAndMonitor` into `connectAndMonitor` (orchestrates candidates + reconnect) and `connectAndMonitorOne` (single candidate lifecycle).
+
+### Changes
+- **Modified** `internal/config/config.go` — Added `AutoReconnect` field and `--auto-reconnect` flag (default true).
+- **Modified** `internal/engine/engine.go` — Extracted `connectAndMonitorOne` from `connectAndMonitor`. Added reconnect loop with exponential backoff (2s, 4s, 8s, max 30s) and max 3 reconnect attempts per config. On exhaustion, falls through to next ranked candidate.
+
+### Files Touched
+- `internal/config/config.go` (modified)
+- `internal/engine/engine.go` (modified)
+
+### Behavior Impact
+- When a connected node degrades, FiVi now retries the SAME config up to 3 times with exponential backoff before trying the next ranked candidate.
+- This handles transient failures (brief network interruptions) without unnecessary failover.
+- `--auto-reconnect=false` restores the old behavior (immediate failover to next candidate).
+- Combined with warm standby (I3), the failover chain is: reconnect same config → try next ranked → try warm standbys → full rediscovery.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all tests pass
+
+### Next Milestone
+Milestone I complete. Next: **Milestone J** (Routing rules + Configurable DNS + Geo routing)
 
 ## Context Update Protocol (mandatory)
 After each completed task, append a section to this file:

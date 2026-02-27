@@ -38,6 +38,10 @@ type AppConfig struct {
 	SpeedTarget      string
 	SpeedTestBytes   int64
 	RetryBackoff     time.Duration
+	LatencyCutoff    time.Duration
+	VerifyRetries    int
+	StandbyTTL       time.Duration
+	AutoReconnect    bool
 	OnlySchemes      map[string]bool
 }
 
@@ -73,6 +77,10 @@ func ParseFlags() AppConfig {
 		speedTarget      = flag.String("speed-target", "https://www.youtube.com/", "target URL for speed sampling through proxy")
 		speedBytes       = flag.Int64("speed-bytes", 524288, "max bytes to read for speed sampling")
 		retryBackoff     = flag.Duration("retry-backoff", defaultProfile.RetryBackoff, "backoff before restarting discovery when all candidates fail")
+		latencyCutoff    = flag.Duration("latency-cutoff", 1500*time.Millisecond, "max TCP connect latency for pre-scan; 0 disables pre-scan")
+		verifyRetries    = flag.Int("verify-retries", 5, "post-connect verification attempts before declaring connected")
+		standbyTTL       = flag.Duration("standby-ttl", 10*time.Minute, "warm standby config expiry time; 0 disables warm standby")
+		autoReconnect    = flag.Bool("auto-reconnect", true, "retry same config before failover on transient failures")
 		schemesCSV       = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
 	flag.Parse()
@@ -161,6 +169,10 @@ func ParseFlags() AppConfig {
 		SpeedTarget:      strings.TrimSpace(*speedTarget),
 		SpeedTestBytes:   *speedBytes,
 		RetryBackoff:     *retryBackoff,
+		LatencyCutoff:    *latencyCutoff,
+		VerifyRetries:    *verifyRetries,
+		StandbyTTL:       *standbyTTL,
+		AutoReconnect:    *autoReconnect,
 		OnlySchemes:      allowed,
 	}
 }
