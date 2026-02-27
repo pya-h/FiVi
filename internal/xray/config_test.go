@@ -35,7 +35,7 @@ func TestBuildRuntimeConfigHasDNSSniffingAndRouting(t *testing.T) {
 	payload := `{"ps":"n1","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809")
+	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false)
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI error: %v", err)
 	}
@@ -99,5 +99,80 @@ func TestBuildRuntimeConfigHasDNSSniffingAndRouting(t *testing.T) {
 	}
 	if sniffHTTP["enabled"] != true {
 		t.Fatal("sniffing not enabled on http inbound")
+	}
+}
+
+func TestBuildRuntimeConfigTUNMode(t *testing.T) {
+	payload := `{"ps":"n1","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
+	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
+
+	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", true)
+	if err != nil {
+		t.Fatalf("BuildRuntimeConfigFromURI error: %v", err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(cfgBytes, &root); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+
+	// TUN inbound should be the first inbound.
+	inbounds, ok := root["inbounds"].([]any)
+	if !ok || len(inbounds) < 3 {
+		t.Fatalf("expected at least 3 inbounds (tun+socks+http), got %d", len(inbounds))
+	}
+	tunIn, ok := inbounds[0].(map[string]any)
+	if !ok {
+		t.Fatal("first inbound is not a map")
+	}
+	if tunIn["protocol"] != "tun" {
+		t.Fatalf("first inbound protocol=%v, want tun", tunIn["protocol"])
+	}
+	if tunIn["tag"] != "tun-in" {
+		t.Fatalf("tun inbound tag=%v, want tun-in", tunIn["tag"])
+	}
+	tunSettings, ok := tunIn["settings"].(map[string]any)
+	if !ok {
+		t.Fatal("missing tun settings")
+	}
+	if tunSettings["name"] != TUNName {
+		t.Fatalf("tun name=%v, want %s", tunSettings["name"], TUNName)
+	}
+
+	// Proxy outbound should have sockopt mark.
+	outbounds, ok := root["outbounds"].([]any)
+	if !ok || len(outbounds) < 2 {
+		t.Fatal("missing outbounds")
+	}
+	proxyOut, ok := outbounds[0].(map[string]any)
+	if !ok {
+		t.Fatal("first outbound is not a map")
+	}
+	stream, ok := proxyOut["streamSettings"].(map[string]any)
+	if !ok {
+		t.Fatal("proxy outbound missing streamSettings")
+	}
+	sockopt, ok := stream["sockopt"].(map[string]any)
+	if !ok {
+		t.Fatal("proxy outbound missing sockopt")
+	}
+	if mark, ok := sockopt["mark"].(float64); !ok || int(mark) != TUNMark {
+		t.Fatalf("proxy sockopt mark=%v, want %d", sockopt["mark"], TUNMark)
+	}
+
+	// Direct outbound should also have sockopt mark.
+	directOut, ok := outbounds[1].(map[string]any)
+	if !ok {
+		t.Fatal("second outbound is not a map")
+	}
+	directStream, ok := directOut["streamSettings"].(map[string]any)
+	if !ok {
+		t.Fatal("direct outbound missing streamSettings in tunnel mode")
+	}
+	directSockopt, ok := directStream["sockopt"].(map[string]any)
+	if !ok {
+		t.Fatal("direct outbound missing sockopt")
+	}
+	if mark, ok := directSockopt["mark"].(float64); !ok || int(mark) != TUNMark {
+		t.Fatalf("direct sockopt mark=%v, want %d", directSockopt["mark"], TUNMark)
 	}
 }

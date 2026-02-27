@@ -15,6 +15,14 @@ import (
 )
 
 func main() {
+	// Handle subcommands before flag parsing.
+	if len(os.Args) > 1 && os.Args[1] == "fetch" {
+		// Strip "fetch" so flag.Parse() sees remaining flags.
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		runFetchOnly()
+		return
+	}
+
 	cfg := config.ParseFlags()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -35,6 +43,18 @@ func main() {
 		os.Exit(1)
 	}
 	logx.Infof("fivi stopped")
+}
+
+func runFetchOnly() {
+	cfg := config.ParseFlags()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	logx.Infof("fivi fetch: fetching configs from %d sources", len(cfg.BootstrapSources))
+	if err := engine.FetchOnly(ctx, cfg); err != nil {
+		logx.Errorf("fetch failed: %v", err)
+		os.Exit(1)
+	}
 }
 
 func runWithMode(ctx context.Context, cfg config.AppConfig, mode ui.Mode) error {

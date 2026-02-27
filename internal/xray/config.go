@@ -16,10 +16,65 @@ type Parsed struct {
 	Outbound map[string]any
 }
 
-func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Parsed, error) {
+// TUNMark is the SO_MARK value applied to outbound sockets in tunnel mode
+// so their traffic bypasses the TUN routing rule and avoids a loop.
+const TUNMark = 255
+
+// TUNName is the default TUN interface name created by xray.
+const TUNName = "xray0"
+
+func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, Parsed, error) {
 	parsed, err := ParseURI(rawURI)
 	if err != nil {
 		return nil, Parsed{}, err
+	}
+
+	inbounds := []any{
+		map[string]any{
+			"tag":      "socks-in",
+			"listen":   hostOnly(socksAddr),
+			"port":     portOnly(socksAddr),
+			"protocol": "socks",
+			"settings": map[string]any{"auth": "noauth", "udp": true},
+			"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls"}},
+		},
+		map[string]any{
+			"tag":      "http-in",
+			"listen":   hostOnly(httpAddr),
+			"port":     portOnly(httpAddr),
+			"protocol": "http",
+			"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls"}},
+		},
+	}
+
+	if tunnelMode {
+		tunInbound := map[string]any{
+			"port":     0,
+			"protocol": "tun",
+			"tag":      "tun-in",
+			"settings": map[string]any{
+				"name": TUNName,
+				"MTU":  1492,
+			},
+			"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls"}},
+		}
+		inbounds = append([]any{tunInbound}, inbounds...)
+	}
+
+	proxyOut := parsed.Outbound
+	directOut := map[string]any{"tag": "direct", "protocol": "freedom"}
+
+	if tunnelMode {
+		// Add sockopt mark to proxy and direct outbounds so their packets
+		// bypass the TUN routing rule and avoid a routing loop.
+		sockopt := map[string]any{"mark": TUNMark}
+		injectSockopt(proxyOut, sockopt)
+		directOut["streamSettings"] = map[string]any{"sockopt": sockopt}
+	}
+
+	routingRules := []any{
+		map[string]any{"type": "field", "outboundTag": "direct", "ip": privateIPRanges()},
+		map[string]any{"type": "field", "outboundTag": "proxy", "network": "tcp,udp"},
 	}
 
 	cfg := map[string]any{
@@ -31,34 +86,15 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Pars
 				map[string]any{"address": "8.8.8.8", "port": 53},
 			},
 		},
-		"inbounds": []any{
-			map[string]any{
-				"tag":      "socks-in",
-				"listen":   hostOnly(socksAddr),
-				"port":     portOnly(socksAddr),
-				"protocol": "socks",
-				"settings": map[string]any{"auth": "noauth", "udp": true},
-				"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls"}},
-			},
-			map[string]any{
-				"tag":      "http-in",
-				"listen":   hostOnly(httpAddr),
-				"port":     portOnly(httpAddr),
-				"protocol": "http",
-				"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls"}},
-			},
-		},
+		"inbounds": inbounds,
 		"outbounds": []any{
-			parsed.Outbound,
-			map[string]any{"tag": "direct", "protocol": "freedom"},
+			proxyOut,
+			directOut,
 			map[string]any{"tag": "blocked", "protocol": "blackhole"},
 		},
 		"routing": map[string]any{
 			"domainStrategy": "IPIfNonMatch",
-			"rules": []any{
-				map[string]any{"type": "field", "outboundTag": "direct", "ip": privateIPRanges()},
-				map[string]any{"type": "field", "outboundTag": "proxy", "network": "tcp,udp"},
-			},
+			"rules":          routingRules,
 		},
 	}
 	b, err := json.Marshal(cfg)
@@ -66,6 +102,16 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string) ([]byte, Pars
 		return nil, Parsed{}, err
 	}
 	return b, parsed, nil
+}
+
+// injectSockopt adds sockopt to an outbound's streamSettings.
+func injectSockopt(outbound map[string]any, sockopt map[string]any) {
+	stream, ok := outbound["streamSettings"].(map[string]any)
+	if !ok {
+		stream = map[string]any{}
+	}
+	stream["sockopt"] = sockopt
+	outbound["streamSettings"] = stream
 }
 
 func privateIPRanges() []string {

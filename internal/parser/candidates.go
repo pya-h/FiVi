@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"sort"
+	"math/rand"
 	"strings"
 )
 
@@ -31,11 +31,10 @@ func Normalize(rawLinks []string, allowed map[string]bool, max int) []Candidate 
 		seen[link] = struct{}{}
 		out = append(out, Candidate{Raw: link, Scheme: scheme})
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Scheme == out[j].Scheme {
-			return out[i].Raw < out[j].Raw
-		}
-		return out[i].Scheme < out[j].Scheme
+	// Shuffle for protocol diversity — avoids biasing toward one scheme
+	// when a max limit is applied.
+	rand.Shuffle(len(out), func(i, j int) {
+		out[i], out[j] = out[j], out[i]
 	})
 	if max > 0 && len(out) > max {
 		out = out[:max]

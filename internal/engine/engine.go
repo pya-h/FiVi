@@ -20,6 +20,7 @@ import (
 	"fivi/internal/parser"
 	"fivi/internal/probe"
 	"fivi/internal/sources"
+	"fivi/internal/sysproxy"
 )
 
 type Ranked struct {
@@ -76,7 +77,18 @@ var (
 	measureDownloadFn   = probe.MeasureDownloadSpeedMbps
 	waitForProxyReadyFn = waitForProxyReady
 	reserveLocalAddrsFn = reserveLocalAddrs
+	enableSystemProxyFn = sysproxy.Enable
 )
+
+func splitHostPort(addr string) (string, int) {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "127.0.0.1", 0
+	}
+	port := 0
+	fmt.Sscanf(portStr, "%d", &port)
+	return host, port
+}
 
 func Run(ctx context.Context, cfg config.AppConfig) error {
 	return RunWithEvents(ctx, cfg, nil, nil)
@@ -185,6 +197,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	if len(cands) == 0 {
 		return nil, fmt.Errorf("no candidates after normalize")
 	}
+	logx.Infof("fetched %d raw links, %d unique candidates after dedup", len(all), len(cands))
 	logx.Infof("testing %d candidates with %d workers", len(cands), cfg.Workers)
 	emitStatus(status, StatusUpdate{Phase: PhaseDiscovering, TotalCands: len(cands)})
 
@@ -458,6 +471,21 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 		if cfg.IsTunnelMode() {
 			logx.Infof("tunnel mode active: all system traffic is routed through the proxy")
 		}
+
+		// In proxy mode, configure system proxy so browsers use the connection.
+		var restoreProxy func()
+		if !cfg.IsTunnelMode() {
+			socksHost, socksPort := splitHostPort(cfg.ListenSocksAddr)
+			httpHost, httpPort := splitHostPort(cfg.ListenHTTPAddr)
+			restore, proxyErr := enableSystemProxyFn(socksHost, socksPort, httpHost, httpPort)
+			if proxyErr != nil {
+				logx.Warnf("system proxy setup failed: %v (browsers need manual proxy config)", proxyErr)
+			} else {
+				restoreProxy = restore
+				logx.Infof("system proxy configured (socks=%s, http=%s)", cfg.ListenSocksAddr, cfg.ListenHTTPAddr)
+			}
+		}
+
 		printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID(), connectedAt, initialProbe, initialSpeed, 0)
 		emitStatus(status, StatusUpdate{
 			Phase:       PhaseMonitoring,
@@ -472,6 +500,10 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 			HTTPAddr:    cfg.ListenHTTPAddr,
 		})
 		monitorErr := monitorConnection(ctx, cfg, cand, connectedAt, status)
+		if restoreProxy != nil {
+			restoreProxy()
+			logx.Infof("system proxy restored")
+		}
 		inst.Stop()
 		if monitorErr == nil || errors.Is(monitorErr, context.Canceled) {
 			return monitorErr

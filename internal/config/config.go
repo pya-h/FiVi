@@ -52,14 +52,14 @@ func ParseFlags() AppConfig {
 	var (
 		profileName      = flag.String("profile", "iran", "operational profile name")
 		engine           = flag.String("engine", "xray", "engine backend: xray|singbox")
-		mode             = flag.String("mode", "tunnel", "connection mode: proxy|tunnel (tunnel uses TUN interface, requires singbox + root)")
+		mode             = flag.String("mode", "tunnel", "connection mode: proxy|tunnel (tunnel uses TUN interface, requires root)")
 		xrayBin          = flag.String("xray-bin", "", "override path to xray binary (auto-resolved from bins/ by default)")
 		singboxBin       = flag.String("singbox-bin", "", "override path to sing-box binary (auto-resolved from bins/ by default)")
 		socksAddr        = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
 		httpAddr         = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
 		noTUI            = flag.Bool("no-tui", false, "disable TUI mode even in interactive terminals")
 		workers          = flag.Int("workers", defaultWorkers(), "parallel workers for candidate testing")
-		maxCandidates    = flag.Int("max-candidates", 350, "max unique candidates to test per round")
+		maxCandidates    = flag.Int("max-candidates", 0, "max unique candidates to test per round (0 = no limit)")
 		topCount         = flag.Int("top", 5, "number of top ranked candidates to print")
 		candidateTimeout = flag.Duration("candidate-timeout", 24*time.Second, "timeout budget per candidate across all attempts")
 		startupTimeout   = flag.Duration("startup-timeout", 4*time.Second, "max wait for local proxy listeners to become ready after engine start")
@@ -107,14 +107,11 @@ func ParseFlags() AppConfig {
 	// Normalise connection mode.
 	modeName := normalizeMode(*mode)
 
-	// Tunnel mode requires singbox. If engine is not explicitly set and mode
-	// is tunnel, switch engine to singbox automatically.
-	if modeName == "tunnel" {
-		if !visited["engine"] {
-			engineName = "singbox"
-		} else if engineName == "xray" {
-			failFlag("tunnel mode requires --engine singbox (xray does not support TUN); use --mode proxy for xray")
-		}
+	// When engine is not explicitly set and mode is tunnel, default to singbox
+	// (singbox has more mature TUN with auto_route). Users can override with
+	// --engine xray for native xray TUN (requires root + Linux).
+	if modeName == "tunnel" && !visited["engine"] {
+		engineName = "singbox"
 	}
 
 	// Resolve binary paths: explicit flag > env var > auto-detect from bins/.
