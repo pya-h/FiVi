@@ -1,6 +1,10 @@
 package engines
 
-import "context"
+import (
+	"context"
+
+	"fivi/internal/routing"
+)
 
 type Parsed struct {
 	Name     string
@@ -15,6 +19,6 @@ type Instance interface {
 type Adapter interface {
 	Name() string
 	EnsureBinary(path string) error
-	BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, Parsed, error)
+	BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, rules []routing.Rule) ([]byte, Parsed, error)
 	Start(ctx context.Context, bin string, cfgJSON []byte, name string) (Instance, error)
 }

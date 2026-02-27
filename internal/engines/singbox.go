@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"fivi/internal/routing"
 	"fivi/internal/xray"
 )
 
@@ -44,7 +45,7 @@ func (a *SingboxAdapter) EnsureBinary(path string) error {
 	return nil
 }
 
-func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, Parsed, error) {
+func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, _ []routing.Rule) ([]byte, Parsed, error) {
 	parsed, err := xray.ParseURI(rawURI)
 	if err != nil {
 		return nil, Parsed{}, err

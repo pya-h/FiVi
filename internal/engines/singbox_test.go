@@ -18,7 +18,7 @@ func TestSingboxBuildRuntimeConfigFromURI(t *testing.T) {
 	payload := `{"ps":"sbox-node","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"ws","host":"cdn.example.com","path":"/ws","tls":"tls","sni":"example.com"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfg, parsed, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false)
+	cfg, parsed, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, nil)
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI error: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestSingboxBuildRuntimeConfigFromURI(t *testing.T) {
 
 func TestSingboxBuildRuntimeConfigFromURIInvalid(t *testing.T) {
 	adapter := NewSingboxAdapter()
-	if _, _, err := adapter.BuildRuntimeConfigFromURI("invalid://link", "127.0.0.1:10808", "127.0.0.1:10809", false); err == nil {
+	if _, _, err := adapter.BuildRuntimeConfigFromURI("invalid://link", "127.0.0.1:10808", "127.0.0.1:10809", false, nil); err == nil {
 		t.Fatalf("expected error for invalid URI")
 	}
 }
@@ -61,7 +61,7 @@ func TestSingboxTunnelModeAddsTUNInbound(t *testing.T) {
 	payload := `{"ps":"tunnel-node","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", true)
+	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", true, nil)
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI tunnel error: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestSingboxProxyModeNoTUN(t *testing.T) {
 	payload := `{"ps":"proxy-node","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false)
+	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, nil)
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI proxy error: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestSingboxProxyModeHasDNSAndSniffing(t *testing.T) {
 	payload := `{"ps":"dns-node","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false)
+	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, nil)
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI error: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestSingboxTunnelModeHasNATAndSniffing(t *testing.T) {
 	payload := `{"ps":"tun-node","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", true)
+	cfg, _, err := adapter.BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", true, nil)
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI tunnel error: %v", err)
 	}

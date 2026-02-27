@@ -10,6 +10,7 @@ import (
 
 	"fivi/internal/binresolver"
 	"fivi/internal/profile"
+	"fivi/internal/routing"
 	"fivi/internal/sources"
 )
 
@@ -42,6 +43,7 @@ type AppConfig struct {
 	VerifyRetries    int
 	StandbyTTL       time.Duration
 	AutoReconnect    bool
+	RoutingRules     []routing.Rule
 	OnlySchemes      map[string]bool
 }
 
@@ -81,6 +83,8 @@ func ParseFlags() AppConfig {
 		verifyRetries    = flag.Int("verify-retries", 5, "post-connect verification attempts before declaring connected")
 		standbyTTL       = flag.Duration("standby-ttl", 10*time.Minute, "warm standby config expiry time; 0 disables warm standby")
 		autoReconnect    = flag.Bool("auto-reconnect", true, "retry same config before failover on transient failures")
+		routingRulesCSV  = flag.String("routing-rules", "", "comma-separated routing rules (e.g. domain:*.ir,ip:1.2.3.4,range:10.0.0.0/8)")
+		routingRulesFile = flag.String("routing-rules-file", "", "path to routing rules file (one rule per line)")
 		schemesCSV       = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
 	flag.Parse()
@@ -139,6 +143,25 @@ func ParseFlags() AppConfig {
 		failFlag("invalid --engine=%q (supported: xray, singbox)", *engine)
 	}
 
+	// Load routing rules: file > inline CSV > profile defaults.
+	var routingRules []routing.Rule
+	switch {
+	case *routingRulesFile != "":
+		rules, err := routing.LoadFromFile(*routingRulesFile)
+		if err != nil {
+			failFlag("%v", err)
+		}
+		routingRules = rules
+	case *routingRulesCSV != "":
+		rules, err := routing.ParseCSV(*routingRulesCSV)
+		if err != nil {
+			failFlag("--routing-rules: %v", err)
+		}
+		routingRules = rules
+	default:
+		routingRules = routing.ProfileDefaults(selectedProfile.Name)
+	}
+
 	allowed := map[string]bool{}
 	for _, s := range splitCSV(*schemesCSV) {
 		allowed[strings.ToLower(s)] = true
@@ -173,6 +196,7 @@ func ParseFlags() AppConfig {
 		VerifyRetries:    *verifyRetries,
 		StandbyTTL:       *standbyTTL,
 		AutoReconnect:    *autoReconnect,
+		RoutingRules:     routingRules,
 		OnlySchemes:      allowed,
 	}
 }

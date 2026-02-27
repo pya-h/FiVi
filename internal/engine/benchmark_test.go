@@ -12,6 +12,7 @@ import (
 	"fivi/internal/logx"
 	"fivi/internal/parser"
 	"fivi/internal/probe"
+	"fivi/internal/routing"
 )
 
 type benchmarkAdapter struct{}
@@ -24,7 +25,7 @@ func (a benchmarkAdapter) EnsureBinary(path string) error {
 	return nil
 }
 
-func (a benchmarkAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, engines.Parsed, error) {
+func (a benchmarkAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, _ []routing.Rule) ([]byte, engines.Parsed, error) {
 	return []byte(`{}`), engines.Parsed{Name: rawURI, Protocol: "vmess"}, nil
 }
 

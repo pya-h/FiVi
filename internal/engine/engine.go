@@ -407,7 +407,7 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 			return candidateOutcome{Raw: c.Raw, Reason: FailureReasonReserveAddr}
 		}
 		// Candidate testing always uses proxy mode (no TUN).
-		configJSON, parsed, err := adapter.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr, false)
+		configJSON, parsed, err := adapter.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr, false, cfg.RoutingRules)
 		if err != nil {
 			emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusFailed, attempt, FailureReasonParseCandidate, err, parseStarted)
 			emitDone(WorkerStatusFailed, FailureReasonParseCandidate, err, attempt)
@@ -694,7 +694,7 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 
 func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string, adapter engines.Adapter, engineBin string) (engines.Instance, probe.Result, float64, error) {
 	// Active connection uses the configured mode (tunnel adds TUN inbound).
-	cfgJSON, _, err := adapter.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr, cfg.IsTunnelMode())
+	cfgJSON, _, err := adapter.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr, cfg.IsTunnelMode(), cfg.RoutingRules)
 	if err != nil {
 		return nil, probe.Result{}, 0, err
 	}

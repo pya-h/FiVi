@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"fivi/internal/routing"
 )
 
 type Parsed struct {
@@ -23,7 +25,7 @@ const TUNMark = 255
 // TUNName is the default TUN interface name created by xray.
 const TUNName = "xray0"
 
-func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool) ([]byte, Parsed, error) {
+func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, rules []routing.Rule) ([]byte, Parsed, error) {
 	parsed, err := ParseURI(rawURI)
 	if err != nil {
 		return nil, Parsed{}, err
@@ -72,10 +74,7 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bo
 		directOut["streamSettings"] = map[string]any{"sockopt": sockopt}
 	}
 
-	routingRules := []any{
-		map[string]any{"type": "field", "outboundTag": "direct", "ip": privateIPRanges()},
-		map[string]any{"type": "field", "outboundTag": "proxy", "network": "tcp,udp"},
-	}
+	routeRules := buildXrayRouteRules(rules)
 
 	cfg := map[string]any{
 		"log": map[string]any{
@@ -94,7 +93,7 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bo
 		},
 		"routing": map[string]any{
 			"domainStrategy": "IPIfNonMatch",
-			"rules":          routingRules,
+			"rules":          routeRules,
 		},
 	}
 	b, err := json.Marshal(cfg)
@@ -102,6 +101,103 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bo
 		return nil, Parsed{}, err
 	}
 	return b, parsed, nil
+}
+
+// buildXrayRouteRules constructs the xray routing rules array.
+// Order: private IP direct → negated (proxy) rules → user direct rules → catch-all proxy.
+func buildXrayRouteRules(rules []routing.Rule) []any {
+	var result []any
+
+	// 1. Private IP ranges → direct (always first).
+	result = append(result, map[string]any{
+		"type": "field", "outboundTag": "direct", "ip": privateIPRanges(),
+	})
+
+	// 2. Negated rules → force proxy (higher priority than direct).
+	proxyDomains, proxyDomainSuffixes := collectDomains(rules, true)
+	proxyIPs, proxyCIDRs := collectIPs(rules, true)
+
+	if len(proxyDomains) > 0 || len(proxyDomainSuffixes) > 0 {
+		domains := make([]string, 0, len(proxyDomains)+len(proxyDomainSuffixes))
+		for _, d := range proxyDomains {
+			domains = append(domains, "full:"+d)
+		}
+		for _, d := range proxyDomainSuffixes {
+			domains = append(domains, "domain:"+d)
+		}
+		result = append(result, map[string]any{
+			"type": "field", "outboundTag": "proxy", "domain": domains,
+		})
+	}
+	if len(proxyIPs) > 0 || len(proxyCIDRs) > 0 {
+		ips := append(append([]string{}, proxyIPs...), proxyCIDRs...)
+		result = append(result, map[string]any{
+			"type": "field", "outboundTag": "proxy", "ip": ips,
+		})
+	}
+
+	// 3. Normal (non-negated) rules → direct.
+	directDomains, directDomainSuffixes := collectDomains(rules, false)
+	directIPs, directCIDRs := collectIPs(rules, false)
+
+	if len(directDomains) > 0 || len(directDomainSuffixes) > 0 {
+		domains := make([]string, 0, len(directDomains)+len(directDomainSuffixes))
+		for _, d := range directDomains {
+			domains = append(domains, "full:"+d)
+		}
+		for _, d := range directDomainSuffixes {
+			domains = append(domains, "domain:"+d)
+		}
+		result = append(result, map[string]any{
+			"type": "field", "outboundTag": "direct", "domain": domains,
+		})
+	}
+	if len(directIPs) > 0 || len(directCIDRs) > 0 {
+		ips := append(append([]string{}, directIPs...), directCIDRs...)
+		result = append(result, map[string]any{
+			"type": "field", "outboundTag": "direct", "ip": ips,
+		})
+	}
+
+	// 4. Catch-all → proxy.
+	result = append(result, map[string]any{
+		"type": "field", "outboundTag": "proxy", "network": "tcp,udp",
+	})
+
+	return result
+}
+
+// collectDomains extracts exact and wildcard domains from rules matching
+// the given negated state.
+func collectDomains(rules []routing.Rule, negated bool) (exact, suffix []string) {
+	for _, r := range rules {
+		if r.Type != routing.RuleDomain || r.Negated != negated {
+			continue
+		}
+		if r.Wildcard {
+			suffix = append(suffix, r.Value)
+		} else {
+			exact = append(exact, r.Value)
+		}
+	}
+	return exact, suffix
+}
+
+// collectIPs extracts exact IPs and CIDRs from rules matching the given
+// negated state.
+func collectIPs(rules []routing.Rule, negated bool) (ips, cidrs []string) {
+	for _, r := range rules {
+		if r.Negated != negated {
+			continue
+		}
+		switch r.Type {
+		case routing.RuleIP:
+			ips = append(ips, r.Value)
+		case routing.RuleRange:
+			cidrs = append(cidrs, r.Value)
+		}
+	}
+	return ips, cidrs
 }
 
 // injectSockopt adds sockopt to an outbound's streamSettings.

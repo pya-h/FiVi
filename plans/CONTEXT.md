@@ -303,6 +303,37 @@ Added `--auto-reconnect` flag (default: enabled) that retries the same config wi
 ### Next Milestone
 Milestone I complete. Next: **Milestone J** (Routing rules + Configurable DNS + Geo routing)
 
+---
+
+## Task J1: Routing Rule Parser and Data Model — 2026-02-28
+
+### Summary
+Added `internal/routing` package with a complete routing rule parser supporting domain (exact + wildcard), IP, and CIDR range rules with negation. Includes CSV and file loading, profile-based defaults (Iran profile has common Iranian domains and IP ranges as direct-bypass rules), and helper functions for categorizing rules.
+
+### Changes
+- **New** `internal/routing/rules.go` — Rule data model (`RuleType`, `Rule` struct), `ParseRule()`, `ParseRules()`, `ParseCSV()`, `LoadFromFile()`, `Split()`, filter helpers (`DomainRules`, `IPRules`, `RangeRules`), `IranDefaults` preset, `ProfileDefaults()`.
+- **New** `internal/routing/rules_test.go` — 26 tests covering all rule types, negation, wildcards, IPv6, CIDR normalization, error cases, CSV/file loading, profile defaults, split and filter functions.
+- **Modified** `internal/config/config.go` — Added `RoutingRules []routing.Rule` to `AppConfig`. Added `--routing-rules` (inline CSV) and `--routing-rules-file` (file path) flags. Auto-loads profile defaults when no explicit rules provided.
+
+### Files Touched
+- `internal/routing/rules.go` (new)
+- `internal/routing/rules_test.go` (new)
+- `internal/config/config.go` (modified)
+
+### Behavior Impact
+- Users can specify routing rules via `--routing-rules "domain:*.ir,ip:1.2.3.4"` or `--routing-rules-file /path/to/rules.txt`.
+- Iran profile automatically loads default direct-bypass rules for common Iranian domains (*.ir, digikala, snapp, etc.) and IP ranges (MTN, MCI, etc.).
+- Rules are parsed and validated at startup — invalid rules cause immediate exit with error.
+- File-based rules take priority over inline CSV; both override profile defaults.
+- Rules are stored in `AppConfig.RoutingRules` for consumption by engine config builders (J2/J3).
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all tests pass (26 new routing tests + full suite)
+
+### Next Task
+`J2` — Integrate routing rules into xray config builder
+
 ## Context Update Protocol (mandatory)
 After each completed task, append a section to this file:
 - Task ID and date
