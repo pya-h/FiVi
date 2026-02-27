@@ -143,3 +143,234 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 32. [x] `G7` Update all UI tests for new signatures.
 - Output: dashboard_test.go and progress_test.go updated for new function signatures.
 - Done when: `go test ./internal/ui` passes.
+
+## Milestone H: TUN Mode + Fetch Command + System Proxy + Config Limits
+
+33. [x] `H1` Xray TUN mode: add native gVisor TUN inbound, sockopt mark, route management.
+- Output: TUN inbound in xray config, `route_linux.go`/`route_other.go`, TUN-aware xray adapter.
+- Done when: `--engine xray --mode tunnel` starts TUN without error on Linux.
+
+34. [x] `H2` Remove max-candidates cap, replace sort with shuffle for protocol diversity.
+- Output: default `--max-candidates 0`, `rand.Shuffle` in Normalize, updated tests.
+- Done when: all protocols have equal chance, no artificial cap by default.
+
+35. [x] `H3` Add `./fivi fetch` subcommand for cache-only fetching.
+- Output: `fetch_only.go`, subcommand detection in `main.go`.
+- Done when: `./fivi fetch` fetches all sources, saves cache, prints summary, and exits.
+
+36. [x] `H4` Auto-configure GNOME system proxy in proxy mode.
+- Output: `sysproxy/gnome.go`, integrated into `connectAndMonitor`, restore on disconnect.
+- Done when: `gsettings` proxy is set on connect and restored on disconnect/exit.
+
+---
+
+## Milestone I: Connection Resilience + Latency Pre-Scan + Graceful Cleanup
+
+37. [ ] `I1` Add latency pre-scanner to fast-reject unreachable configs.
+- Add `internal/latency` package with TCP connect scanner.
+- Extract server host:port from raw V2Ray URIs (parse vmess/vless/trojan/ss address fields).
+- Run batch TCP connect with 2s timeout, reject configs above `--latency-cutoff` (default 1500ms).
+- Integrate into discovery pipeline AFTER normalize, BEFORE worker validation.
+- Emit `candidate_latency_reject` failure reason in validation summary.
+- Output: `internal/latency/scanner.go`, `scanner_test.go`, integration in `engine.go`.
+- Done when: unreachable servers are skipped before spawning engine, test passes.
+
+38. [ ] `I2` Add post-connect verification loop.
+- After engine start and proxy readiness, retry connectivity check up to 5 times with 2s interval.
+- Only declare "connected" after first successful verification through the proxy.
+- Catches cases where proxy port is listening but tunnel is not yet established.
+- Configurable via `--verify-retries` (default 5).
+- Output: updated `startCandidate()` in `engine.go`.
+- Done when: connection is verified before monitoring starts.
+
+39. [ ] `I3` Add warm standby for instant failover.
+- After ranking, keep top-3 configs in memory as warm standbys.
+- On failover, try warm standby configs BEFORE triggering full rediscovery.
+- Warm configs expire after configurable TTL (default 10min, `--standby-ttl`).
+- Add `PhaseWarmFailover` status event.
+- Output: warm standby logic in `connectAndMonitor()`, new phase event.
+- Done when: failover tries standby configs first, falls back to rediscovery if all fail.
+
+40. [ ] `I4` Add graceful cleanup and signal handling.
+- Register SIGINT/SIGTERM handlers in `main.go`.
+- Cleanup sequence: restore system proxy → teardown TUN routes → kill engine → remove temp files.
+- Use `sync.Once` to prevent double cleanup.
+- Add restart counter (max 3) to prevent infinite loops.
+- Output: `internal/cleanup/cleanup.go`, signal wiring in `main.go`.
+- Done when: Ctrl+C cleanly restores proxy and tears down TUN, test passes.
+
+41. [ ] `I5` Add `--auto-reconnect` flag for reconnection without full rediscovery.
+- On monitor failure, try restarting the SAME config before trying next ranked config.
+- Exponential backoff: 2s, 4s, 8s, max 30s.
+- Max reconnect attempts per config: 3.
+- Only fall through to next ranked config after reconnect exhaustion.
+- Output: updated `monitorConnection()` and `connectAndMonitor()` in `engine.go`.
+- Done when: transient failures trigger reconnect, persistent failures trigger failover.
+
+## Milestone J: Routing Rules + Configurable DNS + Geo Routing
+
+42. [ ] `J1` Add routing rule parser and data model.
+- Add `internal/routing` package.
+- Parse rule format: `domain:example.com`, `domain:*.ir`, `domain:!forced.com`, `ip:1.2.3.4`, `range:10.0.0.0/8`.
+- Negated rules (`!`) have higher priority.
+- Load from `--routing-rules` (inline CSV) or `--routing-rules-file` (file path, one per line).
+- Add profile defaults: `iran` profile includes `domain:*.ir` and common Iranian direct domains.
+- Output: `internal/routing/rules.go`, `rules_test.go`.
+- Done when: rules parse correctly, defaults load from profile, tests pass.
+
+43. [ ] `J2` Integrate routing rules into xray config builder.
+- Convert routing rules to xray route rule format.
+- Insert domain rules as `domain` and `domain suffix` arrays in route rules.
+- Insert IP/CIDR rules as `ip` arrays in route rules.
+- Negated domains route to proxy outbound; normal rules route to direct.
+- Place user rules AFTER private IP rule, BEFORE catch-all proxy rule.
+- Output: updated `internal/xray/config.go`, tests.
+- Done when: generated xray config contains user routing rules.
+
+44. [ ] `J3` Integrate routing rules into singbox config builder.
+- Convert routing rules to singbox route rule format.
+- Domain rules → `domain` and `domain_suffix` in route rule objects.
+- IP/CIDR rules → `ip_cidr` in route rule objects.
+- Negated domain rules → `outbound: "proxy"` (force through proxy).
+- Normal rules → `outbound: "direct"`.
+- Place user rules AFTER private IP and DNS rules, BEFORE catch-all.
+- Output: updated `internal/engines/singbox.go`, tests.
+- Done when: generated singbox config contains user routing rules.
+
+45. [ ] `J4` Add configurable DNS with user overrides.
+- Add `--dns` flag for plain DNS (direct resolver).
+- Add `--doh` flag for DNS-over-HTTPS (proxy-routed resolver).
+- Add `internal/dns` package with `Config` struct.
+- Implement DNS loop prevention: detect if DoH uses hostname, add bootstrap resolver.
+- Update both xray and singbox config builders to use DNS config.
+- Defaults: remote `tls://8.8.8.8` (proxy), direct `223.5.5.5`.
+- Output: `internal/dns/config.go`, updated config builders, tests.
+- Done when: `--dns` and `--doh` flags override DNS in generated configs.
+
+46. [ ] `J5` Add geo-based routing for singbox.
+- Add `--geo-bypass` flag (country code: ir, cn, ru, etc.).
+- Download `.srs` rule set files from Chocolate4U/Iran-sing-box-rules.
+- Cache in `~/.fivi/rulesets/` with 7-day refresh.
+- Add geoip + geosite route rules to singbox config for direct bypass.
+- For xray: use explicit CIDR lists (no geoip.dat dependency).
+- Output: `internal/routing/geo.go`, updated singbox config builder, tests.
+- Done when: `--geo-bypass ir` routes Iranian traffic directly through singbox.
+
+47. [ ] `J6` Extend `ConfigBuildOpts` to pass routing/DNS/geo to adapters.
+- Refactor `BuildRuntimeConfigFromURI` signature to accept `ConfigBuildOpts` struct.
+- Include RoutingRules, DNSConfig, GeoBypass, ShareMode in opts.
+- Update all callers (engine.go testOne, startCandidate, etc.).
+- Maintain backward compatibility for testing (opts with zero values = current behavior).
+- Output: updated `internal/engines/adapter.go`, all adapter implementations, caller sites.
+- Done when: `go build ./...` and `go test ./...` pass with new signature.
+
+## Milestone K: Speed Test + Network Stats + PAC Script
+
+48. [ ] `K1` Add full speed test subcommand.
+- Add `./fivi speedtest` subcommand.
+- Measure download speed: multiple file sizes (100KB, 1MB, 10MB) from configurable target.
+- Measure upload speed: POST payloads of increasing size.
+- Measure latency: multiple pings through proxy, calculate p50/p90.
+- Measure jitter: variance of ping measurements.
+- Run through specified SOCKS proxy (`--socks-addr`) or active connection.
+- Output: `internal/speedtest/speedtest.go`, `speedtest_test.go`, subcommand in `main.go`.
+- Done when: `./fivi speedtest --socks-addr 127.0.0.1:10808` prints download/upload/latency/jitter.
+
+49. [ ] `K2` Add real-time network statistics.
+- Add `internal/netstats` package.
+- Linux: read `/proc/net/dev` for interface counters, calculate delta per second.
+- Detect correct interface: TUN interface name for tunnel mode, default interface for proxy.
+- Sample every 1s, expose via channel for TUI consumption.
+- Add to TUI monitoring view: sent/recv speed + total usage.
+- Configurable via `--stats` flag (off by default to minimize overhead).
+- Output: `internal/netstats/linux.go`, `netstats_test.go`, TUI integration.
+- Done when: TUI shows real-time network stats when `--stats` is enabled.
+
+50. [ ] `K3` Add PAC script server for proxy mode.
+- Add `internal/pac` package.
+- Generate `FindProxyForURL` JavaScript from routing rules.
+- Default: everything through `SOCKS5 127.0.0.1:<port>`.
+- Bypass: localhost, private ranges, routing rule domain/IP matches.
+- Serve on `localhost:<http_port+1>` via Go `net/http`.
+- Auto-start in proxy mode, stop on disconnect.
+- Print PAC URL in connection status.
+- Output: `internal/pac/pac.go`, `pac_test.go`, integration in `engine.go`.
+- Done when: PAC URL is accessible and returns valid PAC script.
+
+## Milestone L: Cross-Platform Proxy + LAN Sharing
+
+51. [ ] `L1` Expand system proxy to KDE.
+- Add `internal/sysproxy/kde.go`.
+- Use `kwriteconfig5` or `kwriteconfig6` (auto-detect Plasma version).
+- Write to `kioslaverc [Proxy Settings]`: ProxyType, socksProxy, NoProxyFor.
+- Save and restore previous settings.
+- Output: `internal/sysproxy/kde.go`, `kde_test.go`.
+- Done when: KDE proxy is set on connect and restored on disconnect.
+
+52. [ ] `L2` Expand system proxy to macOS.
+- Add `internal/sysproxy/darwin.go`.
+- Use `networksetup -setsocksfirewallproxy <service> <ip> <port>` for all network services.
+- Set bypass domains via `networksetup -setproxybypassdomains`.
+- Save and restore previous SOCKS proxy state per service.
+- Output: `internal/sysproxy/darwin.go`, `darwin_test.go`.
+- Done when: macOS proxy is set on connect and restored on disconnect.
+
+53. [ ] `L3` Expand system proxy to Windows.
+- Add `internal/sysproxy/windows.go`.
+- Use PowerShell to modify `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`.
+- Set `ProxyServer`, `ProxyOverride`, `ProxyEnable`.
+- Save and restore previous proxy settings.
+- Output: `internal/sysproxy/windows.go`, `windows_test.go`.
+- Done when: Windows proxy is set on connect and restored on disconnect.
+
+54. [ ] `L4` Auto-detect desktop environment on Linux.
+- Check `$XDG_CURRENT_DESKTOP`, `$DESKTOP_SESSION`, `$GNOME_DESKTOP_SESSION_ID`.
+- Select GNOME, KDE, or log warning for unsupported DE.
+- Update `sysproxy.Enable` to dispatch to correct implementation.
+- Output: `internal/sysproxy/detect.go`, `detect_test.go`.
+- Done when: system proxy works on both GNOME and KDE without user intervention.
+
+55. [ ] `L5` Add LAN sharing mode.
+- Add `--share` flag to bind proxy to `0.0.0.0` instead of `127.0.0.1`.
+- Print local IP addresses and port on start for easy sharing.
+- When combined with system proxy, use actual local IP (not 0.0.0.0).
+- Add security warning to output.
+- Output: updated `config.go`, `engine.go`.
+- Done when: `--share` makes proxy accessible from LAN.
+
+## Milestone M: Binary Management + Auto-Connect + Daemon
+
+56. [ ] `M1` Add binary auto-download command.
+- Add `./fivi install` subcommand.
+- Detect OS and architecture.
+- Query GitHub releases API for latest xray-core and sing-box versions.
+- Download appropriate binary archive, extract, place in `~/.fivi/bins/<engine>/<arch>/`.
+- Verify SHA256 checksum from release assets.
+- Output: `internal/binmgr/download.go`, `download_test.go`, subcommand in `main.go`.
+- Done when: `./fivi install` downloads and places correct binaries.
+
+57. [ ] `M2` Add binary version check and update.
+- Add `./fivi update` subcommand.
+- Compare installed binary version with latest GitHub release.
+- Download and replace if newer version available.
+- Add `--check-update` flag for main command: warn if binaries are outdated on startup.
+- Output: `internal/binmgr/update.go`, subcommand in `main.go`.
+- Done when: `./fivi update` updates binaries to latest version.
+
+58. [ ] `M3` Add session persistence for fast reconnect.
+- Save last working config URI + score + timestamp to `~/.fivi/session.json`.
+- On startup, if session file exists and is fresh (<1h), try persisted config first.
+- Skip full discovery if persisted config still works.
+- Fall back to normal discovery if persisted config fails.
+- Output: `internal/session/session.go`, `session_test.go`, integration in `engine.go`.
+- Done when: restart tries last working config before rediscovery.
+
+59. [ ] `M4` Add daemon mode for background operation.
+- Add `./fivi daemon` subcommand.
+- Detach from terminal, write PID to `~/.fivi/fivi.pid`.
+- Auto-reconnect on failure with exponential backoff.
+- Log to file (`~/.fivi/fivi.log`).
+- `./fivi stop` sends SIGTERM to daemon PID.
+- `./fivi status` reads PID file and checks if daemon is running.
+- Output: daemon scaffolding in `main.go`, PID management, log file rotation.
+- Done when: `./fivi daemon` runs in background, `./fivi stop` stops it.
