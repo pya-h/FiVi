@@ -21,6 +21,7 @@ import (
 	"fivi/internal/logx"
 	"fivi/internal/parser"
 	"fivi/internal/probe"
+	"fivi/internal/routing"
 	"fivi/internal/sources"
 	"fivi/internal/sysproxy"
 )
@@ -144,6 +145,22 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 	if err := adapter.EnsureBinary(engineBin); err != nil {
 		return err
 	}
+
+	// Resolve geo rule sets if --geo-bypass is set.
+	if cfg.GeoBypass != "" && cfg.GeoRuleSets == nil {
+		cacheDir, err := routing.DefaultGeoCacheDir()
+		if err != nil {
+			return fmt.Errorf("geo-bypass: %w", err)
+		}
+		logx.Infof("downloading geo rule sets for %q", cfg.GeoBypass)
+		geo, err := routing.EnsureGeoRuleSets(cfg.GeoBypass, cacheDir)
+		if err != nil {
+			return fmt.Errorf("geo-bypass: %w", err)
+		}
+		cfg.GeoRuleSets = geo
+		logx.Infof("geo rule sets ready: geoip=%s geosite=%s", geo.GeoIPPath, geo.GeositePath)
+	}
+
 	health := sources.NewHealthTracker(cfg.BootstrapSources)
 
 	var standby *warmStandby
@@ -407,7 +424,15 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 			return candidateOutcome{Raw: c.Raw, Reason: FailureReasonReserveAddr}
 		}
 		// Candidate testing always uses proxy mode (no TUN).
-		configJSON, parsed, err := adapter.BuildRuntimeConfigFromURI(c.Raw, socksAddr, httpAddr, false, cfg.RoutingRules)
+		configJSON, parsed, err := adapter.BuildConfig(engines.ConfigBuildOpts{
+			RawURI:     c.Raw,
+			SocksAddr:  socksAddr,
+			HTTPAddr:   httpAddr,
+			TunnelMode: false,
+			Rules:      cfg.RoutingRules,
+			DNS:        cfg.DNS,
+			Geo:        cfg.GeoRuleSets,
+		})
 		if err != nil {
 			emitStageEvent(events, workerID, c.Raw, WorkerStageParse, WorkerStatusFailed, attempt, FailureReasonParseCandidate, err, parseStarted)
 			emitDone(WorkerStatusFailed, FailureReasonParseCandidate, err, attempt)
@@ -694,7 +719,15 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 
 func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string, adapter engines.Adapter, engineBin string) (engines.Instance, probe.Result, float64, error) {
 	// Active connection uses the configured mode (tunnel adds TUN inbound).
-	cfgJSON, _, err := adapter.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr, cfg.IsTunnelMode(), cfg.RoutingRules)
+	cfgJSON, _, err := adapter.BuildConfig(engines.ConfigBuildOpts{
+		RawURI:     rawURI,
+		SocksAddr:  socksAddr,
+		HTTPAddr:   httpAddr,
+		TunnelMode: cfg.IsTunnelMode(),
+		Rules:      cfg.RoutingRules,
+		DNS:        cfg.DNS,
+		Geo:        cfg.GeoRuleSets,
+	})
 	if err != nil {
 		return nil, probe.Result{}, 0, err
 	}

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"fivi/internal/dns"
 	"fivi/internal/routing"
 	"fivi/internal/xray"
 )
@@ -45,8 +46,8 @@ func (a *SingboxAdapter) EnsureBinary(path string) error {
 	return nil
 }
 
-func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, _ []routing.Rule) ([]byte, Parsed, error) {
-	parsed, err := xray.ParseURI(rawURI)
+func (a *SingboxAdapter) BuildConfig(opts ConfigBuildOpts) ([]byte, Parsed, error) {
+	parsed, err := xray.ParseURI(opts.RawURI)
 	if err != nil {
 		return nil, Parsed{}, err
 	}
@@ -59,16 +60,16 @@ func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr s
 		map[string]any{
 			"type":                       "socks",
 			"tag":                        "socks-in",
-			"listen":                     hostOnly(socksAddr),
-			"listen_port":                portOnly(socksAddr),
+			"listen":                     hostOnly(opts.SocksAddr),
+			"listen_port":                portOnly(opts.SocksAddr),
 			"sniff":                      true,
 			"sniff_override_destination": true,
 		},
 		map[string]any{
 			"type":                       "http",
 			"tag":                        "http-in",
-			"listen":                     hostOnly(httpAddr),
-			"listen_port":                portOnly(httpAddr),
+			"listen":                     hostOnly(opts.HTTPAddr),
+			"listen_port":                portOnly(opts.HTTPAddr),
 			"sniff":                      true,
 			"sniff_override_destination": true,
 		},
@@ -76,7 +77,7 @@ func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr s
 
 	inboundTags := []string{"socks-in", "http-in"}
 
-	if tunnelMode {
+	if opts.TunnelMode {
 		tunInbound := map[string]any{
 			"type":                       "tun",
 			"tag":                        "tun-in",
@@ -93,45 +94,15 @@ func (a *SingboxAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr s
 	}
 
 	// DNS: remote through proxy, local through direct (prevents resolution loop).
-	dnsConfig := map[string]any{
-		"servers": []any{
-			map[string]any{
-				"tag":     "remote-dns",
-				"address": "tls://8.8.8.8",
-				"detour":  "proxy",
-			},
-			map[string]any{
-				"tag":     "local-dns",
-				"address": "223.5.5.5",
-				"detour":  "direct",
-			},
-		},
-		"rules": []any{
-			map[string]any{
-				"outbound": "any",
-				"server":   "local-dns",
-			},
-		},
-		"strategy": "prefer_ipv4",
-	}
+	dnsConfig := buildSingboxDNS(opts.DNS)
 
 	route := map[string]any{
-		"rules": []any{
-			map[string]any{
-				"protocol": "dns",
-				"outbound": "dns-out",
-			},
-			map[string]any{
-				"ip_is_private": true,
-				"outbound":      "direct",
-			},
-			map[string]any{
-				"inbound":  inboundTags,
-				"outbound": "proxy",
-			},
-		},
+		"rules": buildSingboxRouteRules(opts.Rules, inboundTags, opts.Geo),
 	}
-	if tunnelMode {
+	if opts.Geo != nil {
+		route["rule_set"] = buildSingboxGeoRuleSetDefs(opts.Geo)
+	}
+	if opts.TunnelMode {
 		route["auto_detect_interface"] = true
 	}
 
@@ -232,6 +203,174 @@ func (i *singboxInstance) Stop() {
 			_ = os.RemoveAll(i.tmpDir)
 		}
 	})
+}
+
+// buildSingboxDNS constructs the singbox DNS config from dns.Config.
+// Uses remote DNS through proxy detour, local DNS through direct detour.
+// Adds bootstrap resolver when remote uses a hostname to prevent DNS loop.
+func buildSingboxDNS(dnsCfg dns.Config) map[string]any {
+	remote := dnsCfg.Remote
+	if remote == "" {
+		remote = "tls://8.8.8.8"
+	}
+	direct := dnsCfg.Direct
+	if direct == "" {
+		direct = "223.5.5.5"
+	}
+
+	remoteDNS := map[string]any{
+		"tag":     "remote-dns",
+		"address": remote,
+		"detour":  "proxy",
+	}
+
+	localDNS := map[string]any{
+		"tag":     "local-dns",
+		"address": direct,
+		"detour":  "direct",
+	}
+
+	servers := []any{remoteDNS, localDNS}
+
+	// DNS loop prevention: if remote uses a hostname, add a bootstrap
+	// resolver so the hostname itself can be resolved without the proxy.
+	if dnsCfg.NeedsBootstrap() {
+		bootstrapDNS := map[string]any{
+			"tag":     "bootstrap-dns",
+			"address": dnsCfg.BootstrapAddr(),
+			"detour":  "direct",
+		}
+		servers = append(servers, bootstrapDNS)
+		remoteDNS["address_resolver"] = "bootstrap-dns"
+	}
+
+	dnsRules := []any{
+		map[string]any{
+			"outbound": "any",
+			"server":   "local-dns",
+		},
+	}
+
+	return map[string]any{
+		"servers":  servers,
+		"rules":    dnsRules,
+		"strategy": "prefer_ipv4",
+	}
+}
+
+// buildSingboxRouteRules constructs the singbox route rules array.
+// Order: dns → private IP → negated (proxy) rules → geo rule sets → user direct rules → catch-all proxy.
+func buildSingboxRouteRules(rules []routing.Rule, inboundTags []string, geo *routing.GeoRuleSets) []any {
+	var result []any
+
+	// 1. DNS protocol → dns-out (always first).
+	result = append(result, map[string]any{
+		"protocol": "dns",
+		"outbound": "dns-out",
+	})
+
+	// 2. Private IP → direct.
+	result = append(result, map[string]any{
+		"ip_is_private": true,
+		"outbound":      "direct",
+	})
+
+	// 3. Negated rules → force proxy (higher priority than direct).
+	for _, r := range singboxRulesForOutbound(rules, true, "proxy") {
+		result = append(result, r)
+	}
+
+	// 4. Geo rule sets → direct (comprehensive country bypass).
+	if geo != nil {
+		result = append(result, map[string]any{
+			"rule_set":  []string{"geosite-" + geo.Country},
+			"outbound": "direct",
+		})
+		result = append(result, map[string]any{
+			"rule_set":  []string{"geoip-" + geo.Country},
+			"outbound": "direct",
+		})
+	}
+
+	// 5. Normal (non-negated) rules → direct.
+	for _, r := range singboxRulesForOutbound(rules, false, "direct") {
+		result = append(result, r)
+	}
+
+	// 6. Catch-all → proxy.
+	result = append(result, map[string]any{
+		"inbound":  inboundTags,
+		"outbound": "proxy",
+	})
+
+	return result
+}
+
+// buildSingboxGeoRuleSetDefs creates the rule_set definitions for the singbox
+// route config. Uses local binary rule sets from cached .srs files.
+func buildSingboxGeoRuleSetDefs(geo *routing.GeoRuleSets) []any {
+	return []any{
+		map[string]any{
+			"type":   "local",
+			"tag":    "geoip-" + geo.Country,
+			"format": "binary",
+			"path":   geo.GeoIPPath,
+		},
+		map[string]any{
+			"type":   "local",
+			"tag":    "geosite-" + geo.Country,
+			"format": "binary",
+			"path":   geo.GeositePath,
+		},
+	}
+}
+
+// singboxRulesForOutbound builds singbox route rule objects for rules matching
+// the given negated state. Groups domains (exact + suffix) and IPs (exact + CIDR)
+// into separate rule objects.
+func singboxRulesForOutbound(rules []routing.Rule, negated bool, outbound string) []map[string]any {
+	var exactDomains, suffixDomains []string
+	var ips []string
+
+	for _, r := range rules {
+		if r.Negated != negated {
+			continue
+		}
+		switch r.Type {
+		case routing.RuleDomain:
+			if r.Wildcard {
+				suffixDomains = append(suffixDomains, r.Value)
+			} else {
+				exactDomains = append(exactDomains, r.Value)
+			}
+		case routing.RuleIP:
+			ips = append(ips, r.Value+"/32")
+		case routing.RuleRange:
+			ips = append(ips, r.Value)
+		}
+	}
+
+	var out []map[string]any
+
+	if len(exactDomains) > 0 || len(suffixDomains) > 0 {
+		rule := map[string]any{"outbound": outbound}
+		if len(exactDomains) > 0 {
+			rule["domain"] = exactDomains
+		}
+		if len(suffixDomains) > 0 {
+			rule["domain_suffix"] = suffixDomains
+		}
+		out = append(out, rule)
+	}
+
+	if len(ips) > 0 {
+		out = append(out, map[string]any{
+			"outbound": outbound,
+			"ip_cidr":  ips,
+		})
+	}
+
+	return out
 }
 
 func buildSingboxOutbound(parsed xray.Parsed) (map[string]any, error) {

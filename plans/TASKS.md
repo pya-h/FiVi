@@ -209,7 +209,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 
 ## Milestone J: Routing Rules + Configurable DNS + Geo Routing
 
-42. [ ] `J1` Add routing rule parser and data model.
+42. [x] `J1` Add routing rule parser and data model.
 - Add `internal/routing` package.
 - Parse rule format: `domain:example.com`, `domain:*.ir`, `domain:!forced.com`, `ip:1.2.3.4`, `range:10.0.0.0/8`.
 - Negated rules (`!`) have higher priority.
@@ -218,7 +218,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/routing/rules.go`, `rules_test.go`.
 - Done when: rules parse correctly, defaults load from profile, tests pass.
 
-43. [ ] `J2` Integrate routing rules into xray config builder.
+43. [x] `J2` Integrate routing rules into xray config builder.
 - Convert routing rules to xray route rule format.
 - Insert domain rules as `domain` and `domain suffix` arrays in route rules.
 - Insert IP/CIDR rules as `ip` arrays in route rules.
@@ -227,7 +227,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: updated `internal/xray/config.go`, tests.
 - Done when: generated xray config contains user routing rules.
 
-44. [ ] `J3` Integrate routing rules into singbox config builder.
+44. [x] `J3` Integrate routing rules into singbox config builder.
 - Convert routing rules to singbox route rule format.
 - Domain rules → `domain` and `domain_suffix` in route rule objects.
 - IP/CIDR rules → `ip_cidr` in route rule objects.
@@ -237,7 +237,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: updated `internal/engines/singbox.go`, tests.
 - Done when: generated singbox config contains user routing rules.
 
-45. [ ] `J4` Add configurable DNS with user overrides.
+45. [x] `J4` Add configurable DNS with user overrides.
 - Add `--dns` flag for plain DNS (direct resolver).
 - Add `--doh` flag for DNS-over-HTTPS (proxy-routed resolver).
 - Add `internal/dns` package with `Config` struct.
@@ -247,7 +247,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/dns/config.go`, updated config builders, tests.
 - Done when: `--dns` and `--doh` flags override DNS in generated configs.
 
-46. [ ] `J5` Add geo-based routing for singbox.
+46. [x] `J5` Add geo-based routing for singbox.
 - Add `--geo-bypass` flag (country code: ir, cn, ru, etc.).
 - Download `.srs` rule set files from Chocolate4U/Iran-sing-box-rules.
 - Cache in `~/.fivi/rulesets/` with 7-day refresh.
@@ -256,7 +256,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/routing/geo.go`, updated singbox config builder, tests.
 - Done when: `--geo-bypass ir` routes Iranian traffic directly through singbox.
 
-47. [ ] `J6` Extend `ConfigBuildOpts` to pass routing/DNS/geo to adapters.
+47. [x] `J6` Extend `ConfigBuildOpts` to pass routing/DNS/geo to adapters.
 - Refactor `BuildRuntimeConfigFromURI` signature to accept `ConfigBuildOpts` struct.
 - Include RoutingRules, DNSConfig, GeoBypass, ShareMode in opts.
 - Update all callers (engine.go testOne, startCandidate, etc.).

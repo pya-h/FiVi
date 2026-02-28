@@ -9,7 +9,6 @@ import (
 	"fivi/internal/config"
 	"fivi/internal/engines"
 	"fivi/internal/probe"
-	"fivi/internal/routing"
 )
 
 type mockAdapter struct {
@@ -25,8 +24,8 @@ func (m *mockAdapter) EnsureBinary(path string) error {
 	return nil
 }
 
-func (m *mockAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, _ []routing.Rule) ([]byte, engines.Parsed, error) {
-	return []byte(`{}`), engines.Parsed{Name: rawURI, Protocol: "vmess"}, nil
+func (m *mockAdapter) BuildConfig(opts engines.ConfigBuildOpts) ([]byte, engines.Parsed, error) {
+	return []byte(`{}`), engines.Parsed{Name: opts.RawURI, Protocol: "vmess"}, nil
 }
 
 func (m *mockAdapter) Start(ctx context.Context, bin string, cfgJSON []byte, name string) (engines.Instance, error) {

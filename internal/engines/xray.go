@@ -7,7 +7,6 @@ import (
 	"net"
 	"time"
 
-	"fivi/internal/routing"
 	"fivi/internal/xray"
 )
 
@@ -25,8 +24,8 @@ func (a *XrayAdapter) EnsureBinary(path string) error {
 	return xray.EnsureBinary(path)
 }
 
-func (a *XrayAdapter) BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, rules []routing.Rule) ([]byte, Parsed, error) {
-	cfgJSON, parsed, err := xray.BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr, tunnelMode, rules)
+func (a *XrayAdapter) BuildConfig(opts ConfigBuildOpts) ([]byte, Parsed, error) {
+	cfgJSON, parsed, err := xray.BuildRuntimeConfigFromURI(opts.RawURI, opts.SocksAddr, opts.HTTPAddr, opts.TunnelMode, opts.Rules, opts.DNS)
 	if err != nil {
 		return nil, Parsed{}, err
 	}

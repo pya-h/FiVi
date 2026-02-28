@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"fivi/internal/dns"
 	"fivi/internal/routing"
 )
 
@@ -25,7 +26,7 @@ const TUNMark = 255
 // TUNName is the default TUN interface name created by xray.
 const TUNName = "xray0"
 
-func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, rules []routing.Rule) ([]byte, Parsed, error) {
+func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bool, rules []routing.Rule, dnsCfg dns.Config) ([]byte, Parsed, error) {
 	parsed, err := ParseURI(rawURI)
 	if err != nil {
 		return nil, Parsed{}, err
@@ -80,11 +81,7 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bo
 		"log": map[string]any{
 			"loglevel": "warning",
 		},
-		"dns": map[string]any{
-			"servers": []any{
-				map[string]any{"address": "8.8.8.8", "port": 53},
-			},
-		},
+		"dns": buildXrayDNS(dnsCfg),
 		"inbounds": inbounds,
 		"outbounds": []any{
 			proxyOut,
@@ -101,6 +98,50 @@ func BuildRuntimeConfigFromURI(rawURI, socksAddr, httpAddr string, tunnelMode bo
 		return nil, Parsed{}, err
 	}
 	return b, parsed, nil
+}
+
+// buildXrayDNS constructs the xray DNS config section from dns.Config.
+// Xray uses plain IP:port for DNS. DoT addresses (tls://IP) are converted
+// to the IP with port 853. DoH addresses are used as-is (xray supports them).
+func buildXrayDNS(dnsCfg dns.Config) map[string]any {
+	servers := []any{}
+
+	// Remote DNS (proxy-routed).
+	remote := dnsCfg.Remote
+	if remote == "" {
+		remote = "8.8.8.8"
+	}
+	if dnsCfg.RemoteIsDoT() {
+		// Xray DNS supports "tcp://host:port" and plain "host:port".
+		// For DoT, use the IP on port 853 over TCP.
+		host := extractDNSHost(remote)
+		servers = append(servers, map[string]any{"address": "tcp://" + host, "port": 853})
+	} else if dnsCfg.RemoteIsDoH() {
+		// Xray supports DoH addresses directly.
+		servers = append(servers, map[string]any{"address": remote})
+	} else {
+		// Plain IP.
+		servers = append(servers, map[string]any{"address": remote, "port": 53})
+	}
+
+	// Direct DNS (local, bypass).
+	direct := dnsCfg.Direct
+	if direct == "" {
+		direct = "223.5.5.5"
+	}
+	servers = append(servers, map[string]any{"address": direct, "port": 53})
+
+	return map[string]any{
+		"servers": servers,
+	}
+}
+
+// extractDNSHost extracts the host from a DNS address like "tls://8.8.8.8".
+func extractDNSHost(addr string) string {
+	if idx := strings.Index(addr, "://"); idx >= 0 {
+		return strings.TrimSpace(addr[idx+3:])
+	}
+	return strings.TrimSpace(addr)
 }
 
 // buildXrayRouteRules constructs the xray routing rules array.

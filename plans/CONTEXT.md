@@ -334,6 +334,207 @@ Added `internal/routing` package with a complete routing rule parser supporting 
 ### Next Task
 `J2` — Integrate routing rules into xray config builder
 
+---
+
+## Task J2: Integrate Routing Rules into Xray Config Builder — 2026-02-28
+
+### Summary
+Extended `BuildRuntimeConfigFromURI` across the entire adapter chain to accept `[]routing.Rule`. The xray config builder now converts rules into xray-native routing format with correct priority ordering: private IP → negated (proxy) → direct → catch-all.
+
+### Changes
+- **Modified** `internal/xray/config.go` — Added `rules []routing.Rule` parameter to `BuildRuntimeConfigFromURI`. Added `buildXrayRouteRules()`, `collectDomains()`, `collectIPs()` helpers. Exact domains use `full:` prefix, wildcard domains use `domain:` prefix. Negated rules get `outboundTag: "proxy"`, normal rules get `outboundTag: "direct"`.
+- **Modified** `internal/engines/adapter.go` — Updated `Adapter` interface: `BuildRuntimeConfigFromURI` now accepts `rules []routing.Rule`.
+- **Modified** `internal/engines/xray.go` — Updated `XrayAdapter` to pass rules through to `xray.BuildRuntimeConfigFromURI`.
+- **Modified** `internal/engines/singbox.go` — Updated `SingboxAdapter` signature to accept `_ []routing.Rule` (ignored until J3).
+- **Modified** `internal/engine/engine.go` — Updated callers in `testOne()` and `startCandidate()` to pass `cfg.RoutingRules`.
+- **Modified** `internal/engine/benchmark_test.go` — Updated mock adapter signature.
+- **Modified** `internal/engine/failover_integration_test.go` — Updated mock adapter signature.
+- **Modified** `internal/engines/xray_test.go` — Added `nil` rules argument to existing tests.
+- **Modified** `internal/engines/singbox_test.go` — Added `nil` rules argument to all existing tests.
+- **Modified** `internal/xray/config_test.go` — Added `TestBuildRuntimeConfigWithRoutingRules` (verifies rule ordering, domain prefixes, negation) and `TestBuildRuntimeConfigNoRulesDefaultBehavior` (nil rules = 2 rules).
+
+### Files Touched
+- `internal/xray/config.go` (modified)
+- `internal/xray/config_test.go` (modified)
+- `internal/engines/adapter.go` (modified)
+- `internal/engines/xray.go` (modified)
+- `internal/engines/singbox.go` (modified)
+- `internal/engines/xray_test.go` (modified)
+- `internal/engines/singbox_test.go` (modified)
+- `internal/engine/engine.go` (modified)
+- `internal/engine/benchmark_test.go` (modified)
+- `internal/engine/failover_integration_test.go` (modified)
+
+### Behavior Impact
+- Xray routing config now includes user-defined routing rules between private IP and catch-all rules.
+- Rule priority order: private IPs (direct) → negated rules (force proxy) → normal rules (direct) → catch-all (proxy).
+- Backward compatible: `nil` or empty rules produce the same 2-rule config as before.
+- Iran profile's default rules (*.ir domains + Iranian IP ranges) are automatically applied when using xray engine.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all tests pass (2 new xray routing tests + full suite)
+
+### Next Task
+`J3` — Integrate routing rules into singbox config builder
+
+---
+
+## Task J3: Integrate Routing Rules into Singbox Config Builder — 2026-02-28
+
+### Summary
+Wired routing rules into the singbox config builder. Added `buildSingboxRouteRules()` and `singboxRulesForOutbound()` to convert `[]routing.Rule` into singbox-native route rule format using `domain`, `domain_suffix`, and `ip_cidr` fields.
+
+### Changes
+- **Modified** `internal/engines/singbox.go` — Changed `_ []routing.Rule` to `rules []routing.Rule` in `BuildRuntimeConfigFromURI`. Replaced inline route rules with `buildSingboxRouteRules()` call. Added `buildSingboxRouteRules()` (constructs full rule array) and `singboxRulesForOutbound()` (groups rules by type for a given outbound). Exact IPs get `/32` suffix for `ip_cidr` format.
+- **Modified** `internal/engines/singbox_test.go` — Added `TestSingboxRoutingRulesIntegration` (verifies 7-rule order with mixed rule types, domain/domain_suffix/ip_cidr fields) and `TestSingboxNoRoutingRulesDefaultBehavior` (nil rules = 3 rules).
+
+### Files Touched
+- `internal/engines/singbox.go` (modified)
+- `internal/engines/singbox_test.go` (modified)
+
+### Behavior Impact
+- Singbox configs now include user routing rules between DNS/private-IP rules and catch-all.
+- Rule priority: dns-out → private IP direct → negated (proxy) → normal (direct) → catch-all proxy.
+- Wildcard domains → `domain_suffix`, exact domains → `domain`, IPs → `ip_cidr` with /32, CIDRs → `ip_cidr` as-is.
+- Backward compatible: nil/empty rules produce the same 3-rule config as before.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all tests pass (2 new singbox routing tests + full suite)
+
+### Next Task
+`J4` — Add configurable DNS with user overrides
+
+---
+
+## Task J4: Configurable DNS with User Overrides — 2026-02-28
+
+### Summary
+Added `internal/dns` package with `Config` struct and DNS loop prevention. Added `--dns` and `--doh` flags. Updated both xray and singbox config builders to use configurable DNS instead of hardcoded values. Singbox builder adds a bootstrap DNS server when the remote DNS uses a hostname.
+
+### Changes
+- **New** `internal/dns/config.go` — `Config` struct (Remote, Direct), `Default()`, `NeedsBootstrap()`, `BootstrapAddr()`, type detection helpers (`RemoteIsDoH`, `RemoteIsDoT`, `RemoteIsPlain`), `extractHost()`.
+- **New** `internal/dns/config_test.go` — 10 tests covering defaults, bootstrap detection, type detection, host extraction.
+- **Modified** `internal/config/config.go` — Added `DNS dns.Config` to `AppConfig`. Added `--dns` and `--doh` flags. Builds `dns.Config` from flags with defaults.
+- **Modified** `internal/xray/config.go` — Added `dnsCfg dns.Config` parameter. Added `buildXrayDNS()` and `extractDNSHost()`. Supports plain, DoT (tcp://host:853), and DoH DNS.
+- **Modified** `internal/engines/singbox.go` — Added `dnsCfg dns.Config` parameter. Added `buildSingboxDNS()` with bootstrap DNS for hostname-based remote resolvers.
+- **Modified** `internal/engines/adapter.go` — Updated `Adapter` interface with `dns.Config` parameter.
+- **Modified** `internal/engines/xray.go` — Updated `XrayAdapter` to pass `dnsCfg` through.
+- **Modified** all test files — Updated signatures with `dns.Config{}` zero value.
+
+### Files Touched
+- `internal/dns/config.go` (new)
+- `internal/dns/config_test.go` (new)
+- `internal/config/config.go` (modified)
+- `internal/xray/config.go` (modified)
+- `internal/xray/config_test.go` (modified)
+- `internal/engines/adapter.go` (modified)
+- `internal/engines/xray.go` (modified)
+- `internal/engines/singbox.go` (modified)
+- `internal/engines/xray_test.go` (modified)
+- `internal/engines/singbox_test.go` (modified)
+- `internal/engine/engine.go` (modified)
+- `internal/engine/benchmark_test.go` (modified)
+- `internal/engine/failover_integration_test.go` (modified)
+
+### Behavior Impact
+- `--doh tls://1.1.1.1` overrides the proxy-routed DNS resolver.
+- `--dns 4.2.2.4` overrides the direct DNS resolver.
+- DNS loop prevention: when remote DNS uses a hostname (e.g. `https://dns.google/dns-query`), singbox config gets a bootstrap DNS server to resolve that hostname via direct.
+- Defaults unchanged: remote `tls://8.8.8.8` (proxy), direct `223.5.5.5`.
+- Zero-value `dns.Config{}` falls back to hardcoded defaults in builders, preserving backward compatibility.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all tests pass (10 new dns tests + full suite)
+
+### Next Task
+`J5` — Add geo-based routing for singbox
+
+---
+
+## Task J5: Geo-Based Routing for Singbox — 2026-02-28
+
+### Summary
+Added `--geo-bypass` flag for comprehensive country-based traffic routing. For singbox, downloads `.srs` binary rule set files (geoip + geosite) from Chocolate4U/Iran-sing-box-rules, caches them in `~/.fivi/rulesets/` with 7-day refresh, and injects `rule_set` definitions and route rules into the singbox config. For xray, the existing explicit routing rules system handles geo bypass. Used a `GeoAware` interface pattern to avoid modifying the main `Adapter` interface (will be cleaned up in J6).
+
+### Changes
+- **New** `internal/routing/geo.go` — `GeoRuleSets` struct, `EnsureGeoRuleSets(country, cacheDir)` with download/cache logic, `DefaultGeoCacheDir()`, `SupportedGeoCountries()`, 7-day freshness check, atomic file writes via `.tmp` rename.
+- **New** `internal/routing/geo_test.go` — 7 tests: supported countries, unsupported country error, download with httptest mock, caching (no re-download), stale refresh (8-day-old files re-downloaded), freshness check, HTTP error handling.
+- **Modified** `internal/engines/adapter.go` — Added `GeoAware` interface with `SetGeoRuleSets(geo *routing.GeoRuleSets)` method.
+- **Modified** `internal/engines/singbox.go` — Added `Geo *routing.GeoRuleSets` field to `SingboxAdapter`, implemented `SetGeoRuleSets()`. Updated `buildSingboxRouteRules()` to accept `geo` param and insert geo rule set references between negated and normal rules. Added `buildSingboxGeoRuleSetDefs()` to create local binary rule set definitions.
+- **Modified** `internal/config/config.go` — Added `GeoBypass string` to `AppConfig`, added `--geo-bypass` flag.
+- **Modified** `internal/engine/engine.go` — Added geo resolution at startup in `RunWithAdapter`: checks `GeoAware` interface, calls `EnsureGeoRuleSets`, sets on adapter. For non-GeoAware adapters (xray), logs informational message.
+- **Modified** `internal/engines/singbox_test.go` — Added 4 new tests: `TestSingboxGeoBypassAddsRuleSets` (verifies rule set defs + route rules), `TestSingboxGeoBypassWithRoutingRules` (geo + user rules ordering), `TestSingboxNoGeoBypassNoRuleSetDefs` (no rule_set when geo disabled), and validates rule priority ordering.
+
+### Files Touched
+- `internal/routing/geo.go` (new)
+- `internal/routing/geo_test.go` (new)
+- `internal/engines/adapter.go` (modified)
+- `internal/engines/singbox.go` (modified)
+- `internal/engines/singbox_test.go` (modified)
+- `internal/config/config.go` (modified)
+- `internal/engine/engine.go` (modified)
+
+### Behavior Impact
+- `--geo-bypass ir` downloads Iran rule sets and routes all Iranian IPs/domains directly via singbox.
+- Rule sets are cached in `~/.fivi/rulesets/` for 7 days, then auto-refreshed.
+- Rule priority order with geo: dns-out → private IP → negated (proxy) → geo rule sets (direct) → user rules (direct) → catch-all (proxy).
+- Singbox config gets `route.rule_set` definitions (local binary format) and `rule_set` route rules.
+- For xray engine, `--geo-bypass` is accepted but geo bypass uses existing explicit routing rules (CIDR lists from profile defaults).
+- No interface change to `Adapter` — uses optional `GeoAware` interface pattern.
+- Backward compatible: without `--geo-bypass`, behavior is identical to before.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all 15 test packages pass (7 new geo tests + 4 new singbox geo tests)
+
+### Next Task
+`J6` — Extend `ConfigBuildOpts` to pass routing/DNS/geo to adapters
+
+---
+
+## Task J6: Refactor to ConfigBuildOpts Struct — 2026-02-28
+
+### Summary
+Refactored the `Adapter.BuildRuntimeConfigFromURI` method (6 parameters) into `Adapter.BuildConfig(opts ConfigBuildOpts)` using a single options struct. Eliminated the `GeoAware` interface by including `Geo *routing.GeoRuleSets` directly in the opts. Added `GeoRuleSets` field to `AppConfig` so resolved geo data flows through without threading new parameters through the entire call chain.
+
+### Changes
+- **Modified** `internal/engines/adapter.go` — Added `ConfigBuildOpts` struct (RawURI, SocksAddr, HTTPAddr, TunnelMode, Rules, DNS, Geo). Renamed interface method from `BuildRuntimeConfigFromURI` to `BuildConfig(opts ConfigBuildOpts)`. Removed `GeoAware` interface (no longer needed).
+- **Modified** `internal/engines/xray.go` — Updated `XrayAdapter.BuildConfig` to unpack opts and call `xray.BuildRuntimeConfigFromURI`. Removed unused `dns` and `routing` imports.
+- **Modified** `internal/engines/singbox.go` — Removed `Geo` field and `SetGeoRuleSets` from `SingboxAdapter`. Updated `BuildConfig` to read all parameters from opts, including `opts.Geo` for geo rule sets.
+- **Modified** `internal/config/config.go` — Added `GeoRuleSets *routing.GeoRuleSets` to `AppConfig` (resolved at engine startup).
+- **Modified** `internal/engine/engine.go` — Stores resolved geo rule sets in `cfg.GeoRuleSets` instead of using `GeoAware` interface. Updated `testOne()` and `startCandidate()` to build `engines.ConfigBuildOpts` structs.
+- **Modified** `internal/engines/singbox_test.go` — Converted all `BuildRuntimeConfigFromURI(...)` calls to `BuildConfig(ConfigBuildOpts{...})`. Geo tests now pass `Geo` via opts instead of `SetGeoRuleSets`. Removed `dns` import.
+- **Modified** `internal/engines/xray_test.go` — Converted to `BuildConfig(ConfigBuildOpts{...})`. Removed `dns` import.
+- **Modified** `internal/engine/benchmark_test.go` — Updated mock adapter to implement `BuildConfig`. Removed `dns` and `routing` imports.
+- **Modified** `internal/engine/failover_integration_test.go` — Updated mock adapter to implement `BuildConfig`. Removed `dns` and `routing` imports.
+
+### Files Touched
+- `internal/engines/adapter.go` (modified)
+- `internal/engines/xray.go` (modified)
+- `internal/engines/singbox.go` (modified)
+- `internal/engines/singbox_test.go` (modified)
+- `internal/engines/xray_test.go` (modified)
+- `internal/config/config.go` (modified)
+- `internal/engine/engine.go` (modified)
+- `internal/engine/benchmark_test.go` (modified)
+- `internal/engine/failover_integration_test.go` (modified)
+
+### Behavior Impact
+- Cleaner adapter interface: `BuildConfig(opts)` instead of 6 positional parameters.
+- `GeoAware` interface eliminated — geo config flows through `ConfigBuildOpts.Geo` and `AppConfig.GeoRuleSets`.
+- Fully backward compatible: zero-value `ConfigBuildOpts{}` produces the same configs as before.
+- Future options (e.g. ShareMode) can be added to `ConfigBuildOpts` without changing the interface.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all 15 test packages pass
+
+### Next Milestone
+Milestone J complete (J1–J6). Next: **Milestone K**
+
 ## Context Update Protocol (mandatory)
 After each completed task, append a section to this file:
 - Task ID and date

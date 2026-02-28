@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"fivi/internal/dns"
 	"fivi/internal/routing"
 )
 
@@ -37,7 +38,7 @@ func TestBuildRuntimeConfigHasDNSSniffingAndRouting(t *testing.T) {
 	payload := `{"ps":"n1","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, nil)
+	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, nil, dns.Config{})
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI error: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestBuildRuntimeConfigTUNMode(t *testing.T) {
 	payload := `{"ps":"n1","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", true, nil)
+	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", true, nil, dns.Config{})
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI error: %v", err)
 	}
@@ -192,7 +193,7 @@ func TestBuildRuntimeConfigWithRoutingRules(t *testing.T) {
 		{Type: routing.RuleRange, Value: "100.64.0.0/10", Negated: true},
 	}
 
-	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, rules)
+	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, rules, dns.Config{})
 	if err != nil {
 		t.Fatalf("BuildRuntimeConfigFromURI error: %v", err)
 	}
@@ -275,7 +276,7 @@ func TestBuildRuntimeConfigNoRulesDefaultBehavior(t *testing.T) {
 	payload := `{"ps":"n1","add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","aid":"0","scy":"auto","net":"tcp","tls":"tls"}`
 	link := "vmess://" + base64.StdEncoding.EncodeToString([]byte(payload))
 
-	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, nil)
+	cfgBytes, _, err := BuildRuntimeConfigFromURI(link, "127.0.0.1:10808", "127.0.0.1:10809", false, nil, dns.Config{})
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}

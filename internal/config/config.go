@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"fivi/internal/binresolver"
+	"fivi/internal/dns"
 	"fivi/internal/profile"
 	"fivi/internal/routing"
 	"fivi/internal/sources"
@@ -44,6 +45,9 @@ type AppConfig struct {
 	StandbyTTL       time.Duration
 	AutoReconnect    bool
 	RoutingRules     []routing.Rule
+	DNS              dns.Config
+	GeoBypass        string              // country code for geo-based routing (e.g. "ir")
+	GeoRuleSets      *routing.GeoRuleSets // resolved at startup by engine
 	OnlySchemes      map[string]bool
 }
 
@@ -85,6 +89,9 @@ func ParseFlags() AppConfig {
 		autoReconnect    = flag.Bool("auto-reconnect", true, "retry same config before failover on transient failures")
 		routingRulesCSV  = flag.String("routing-rules", "", "comma-separated routing rules (e.g. domain:*.ir,ip:1.2.3.4,range:10.0.0.0/8)")
 		routingRulesFile = flag.String("routing-rules-file", "", "path to routing rules file (one rule per line)")
+		dnsPlain         = flag.String("dns", "", "plain DNS server for direct resolution (e.g. 223.5.5.5)")
+		dnsDoH           = flag.String("doh", "", "DNS-over-HTTPS/TLS server for proxy-routed resolution (e.g. tls://8.8.8.8, https://1.1.1.1/dns-query)")
+		geoBypass        = flag.String("geo-bypass", "", "country code for geo-based routing bypass (e.g. ir, cn, ru); downloads .srs rule sets for singbox")
 		schemesCSV       = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
 	flag.Parse()
@@ -162,6 +169,15 @@ func ParseFlags() AppConfig {
 		routingRules = routing.ProfileDefaults(selectedProfile.Name)
 	}
 
+	// Build DNS config: user overrides > defaults.
+	dnsConfig := dns.Default()
+	if *dnsPlain != "" {
+		dnsConfig.Direct = strings.TrimSpace(*dnsPlain)
+	}
+	if *dnsDoH != "" {
+		dnsConfig.Remote = strings.TrimSpace(*dnsDoH)
+	}
+
 	allowed := map[string]bool{}
 	for _, s := range splitCSV(*schemesCSV) {
 		allowed[strings.ToLower(s)] = true
@@ -197,6 +213,8 @@ func ParseFlags() AppConfig {
 		StandbyTTL:       *standbyTTL,
 		AutoReconnect:    *autoReconnect,
 		RoutingRules:     routingRules,
+		DNS:              dnsConfig,
+		GeoBypass:        strings.TrimSpace(strings.ToLower(*geoBypass)),
 		OnlySchemes:      allowed,
 	}
 }
