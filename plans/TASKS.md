@@ -266,7 +266,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 
 ## Milestone K: Speed Test + Network Stats + PAC Script
 
-48. [ ] `K1` Add full speed test subcommand.
+48. [x] `K1` Add full speed test subcommand.
 - Add `./fivi speedtest` subcommand.
 - Measure download speed: multiple file sizes (100KB, 1MB, 10MB) from configurable target.
 - Measure upload speed: POST payloads of increasing size.
@@ -276,7 +276,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/speedtest/speedtest.go`, `speedtest_test.go`, subcommand in `main.go`.
 - Done when: `./fivi speedtest --socks-addr 127.0.0.1:10808` prints download/upload/latency/jitter.
 
-49. [ ] `K2` Add real-time network statistics.
+49. [x] `K2` Add real-time network statistics.
 - Add `internal/netstats` package.
 - Linux: read `/proc/net/dev` for interface counters, calculate delta per second.
 - Detect correct interface: TUN interface name for tunnel mode, default interface for proxy.
@@ -286,7 +286,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/netstats/linux.go`, `netstats_test.go`, TUI integration.
 - Done when: TUI shows real-time network stats when `--stats` is enabled.
 
-50. [ ] `K3` Add PAC script server for proxy mode.
+50. [x] `K3` Add PAC script server for proxy mode.
 - Add `internal/pac` package.
 - Generate `FindProxyForURL` JavaScript from routing rules.
 - Default: everything through `SOCKS5 127.0.0.1:<port>`.

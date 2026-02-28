@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +14,8 @@ import (
 	"fivi/internal/config"
 	"fivi/internal/engine"
 	"fivi/internal/logx"
+	"fivi/internal/netstats"
+	"fivi/internal/speedtest"
 	"fivi/internal/ui"
 )
 
@@ -25,6 +29,11 @@ func main() {
 		// Strip "fetch" so flag.Parse() sees remaining flags.
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 		runFetchOnly()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "speedtest" {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		runSpeedTest()
 		return
 	}
 
@@ -67,6 +76,39 @@ func runFetchOnly() {
 	}
 }
 
+func runSpeedTest() {
+	fs := flag.NewFlagSet("speedtest", flag.ExitOnError)
+	socksAddr := fs.String("socks-addr", "127.0.0.1:10808", "SOCKS proxy address to test through")
+	downloadURL := fs.String("download-url", "", "download test URL (default: Cloudflare)")
+	uploadURL := fs.String("upload-url", "", "upload test URL (default: Cloudflare)")
+	latencyURL := fs.String("latency-url", "", "latency test URL (default: gstatic)")
+	timeout := fs.Duration("timeout", speedtest.DefaultTimeout, "overall test timeout")
+	pings := fs.Int("pings", speedtest.DefaultLatencyPings, "number of latency pings")
+	fs.Parse(os.Args[1:])
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	cfg := speedtest.Config{
+		SocksAddr:    *socksAddr,
+		DownloadURL:  *downloadURL,
+		UploadURL:    *uploadURL,
+		LatencyURL:   *latencyURL,
+		Timeout:      *timeout,
+		LatencyPings: *pings,
+		Log: func(format string, args ...any) {
+			fmt.Printf(format+"\n", args...)
+		},
+	}
+
+	result, err := speedtest.Run(ctx, cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "speed test failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Print(speedtest.FormatResult(result))
+}
+
 func runWithMode(ctx context.Context, cfg config.AppConfig, mode ui.Mode) error {
 	buffer := cfg.Workers * 8
 	if buffer < 128 {
@@ -75,14 +117,32 @@ func runWithMode(ctx context.Context, cfg config.AppConfig, mode ui.Mode) error 
 	events := make(chan engine.WorkerEvent, buffer)
 	status := make(chan engine.StatusUpdate, 64)
 
-	if mode == ui.ModeTUI {
-		return runTUI(ctx, cfg, events, status)
+	// Start netstats monitor if enabled.
+	var nsChan <-chan netstats.Stats
+	if cfg.NetStats {
+		iface := cfg.NetStatsIface
+		if iface == "" {
+			detected, err := netstats.DetectInterface(cfg.IsTunnelMode())
+			if err != nil {
+				logx.Warnf("netstats: interface detection failed: %v (stats disabled)", err)
+			} else {
+				iface = detected
+			}
+		}
+		if iface != "" {
+			logx.Infof("netstats: monitoring interface %s", iface)
+			nsChan = netstats.StartMonitor(ctx, iface, 1*time.Second)
+		}
 	}
 
-	return runLogMode(ctx, cfg, events, status)
+	if mode == ui.ModeTUI {
+		return runTUI(ctx, cfg, events, status, nsChan)
+	}
+
+	return runLogMode(ctx, cfg, events, status, nsChan)
 }
 
-func runTUI(ctx context.Context, cfg config.AppConfig, events chan engine.WorkerEvent, status chan engine.StatusUpdate) error {
+func runTUI(ctx context.Context, cfg config.AppConfig, events chan engine.WorkerEvent, status chan engine.StatusUpdate, ns <-chan netstats.Stats) error {
 	engineCtx, cancelEngine := context.WithCancel(ctx)
 	defer cancelEngine()
 
@@ -93,7 +153,7 @@ func runTUI(ctx context.Context, cfg config.AppConfig, events chan engine.Worker
 		engineDone <- engine.RunWithEvents(engineCtx, cfg, events, status)
 	}()
 
-	uiErr := ui.RunDashboard(engineCtx, events, status)
+	uiErr := ui.RunDashboard(engineCtx, events, status, ns)
 	cancelEngine()
 	engineErr := <-engineDone
 	if uiErr != nil && !errors.Is(uiErr, context.Canceled) {
@@ -102,12 +162,12 @@ func runTUI(ctx context.Context, cfg config.AppConfig, events chan engine.Worker
 	return engineErr
 }
 
-func runLogMode(ctx context.Context, cfg config.AppConfig, events chan engine.WorkerEvent, status chan engine.StatusUpdate) error {
+func runLogMode(ctx context.Context, cfg config.AppConfig, events chan engine.WorkerEvent, status chan engine.StatusUpdate, ns <-chan netstats.Stats) error {
 	reporterCtx, reporterCancel := context.WithCancel(ctx)
 	reporterDone := make(chan struct{})
 	go func() {
 		defer close(reporterDone)
-		ui.RunLogProgressReporter(reporterCtx, events, status, 2*time.Second)
+		ui.RunLogProgressReporter(reporterCtx, events, status, 2*time.Second, ns)
 	}()
 
 	err := engine.RunWithEvents(ctx, cfg, events, status)

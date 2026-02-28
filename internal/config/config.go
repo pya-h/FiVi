@@ -48,6 +48,8 @@ type AppConfig struct {
 	DNS              dns.Config
 	GeoBypass        string              // country code for geo-based routing (e.g. "ir")
 	GeoRuleSets      *routing.GeoRuleSets // resolved at startup by engine
+	NetStats         bool                 // enable real-time network statistics
+	NetStatsIface    string               // override interface for netstats (auto-detect if empty)
 	OnlySchemes      map[string]bool
 }
 
@@ -92,6 +94,8 @@ func ParseFlags() AppConfig {
 		dnsPlain         = flag.String("dns", "", "plain DNS server for direct resolution (e.g. 223.5.5.5)")
 		dnsDoH           = flag.String("doh", "", "DNS-over-HTTPS/TLS server for proxy-routed resolution (e.g. tls://8.8.8.8, https://1.1.1.1/dns-query)")
 		geoBypass        = flag.String("geo-bypass", "", "country code for geo-based routing bypass (e.g. ir, cn, ru); downloads .srs rule sets for singbox")
+		netStats         = flag.Bool("stats", false, "enable real-time network statistics in TUI (reads /proc/net/dev)")
+		netStatsIface    = flag.String("stats-iface", "", "network interface for stats (auto-detected if empty)")
 		schemesCSV       = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
 	flag.Parse()
@@ -215,6 +219,8 @@ func ParseFlags() AppConfig {
 		RoutingRules:     routingRules,
 		DNS:              dnsConfig,
 		GeoBypass:        strings.TrimSpace(strings.ToLower(*geoBypass)),
+		NetStats:         *netStats,
+		NetStatsIface:    strings.TrimSpace(*netStatsIface),
 		OnlySchemes:      allowed,
 	}
 }

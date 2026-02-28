@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"fivi/internal/engine"
+	"fivi/internal/netstats"
 )
 
 type workerEventMsg engine.WorkerEvent
@@ -22,6 +23,8 @@ type streamClosedMsg struct{}
 type dashboardContextDoneMsg struct{}
 
 type clockTickMsg struct{}
+
+type netStatsMsg netstats.Stats
 
 type workerRow struct {
 	WorkerID  int
@@ -47,6 +50,7 @@ type dashboardModel struct {
 	ctx    context.Context
 	events <-chan engine.WorkerEvent
 	status <-chan engine.StatusUpdate
+	nsChan <-chan netstats.Stats
 
 	startedAt   time.Time
 	lastEventAt time.Time
@@ -73,13 +77,16 @@ type dashboardModel struct {
 	// Health check history (last N checks).
 	healthHistory []healthCheckEntry
 
+	// Network statistics (optional, nil when --stats is off).
+	lastNS *netstats.Stats
+
 	progress progressState
 	workers  map[int]workerRow
 }
 
-func RunDashboard(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate) error {
+func RunDashboard(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate, ns <-chan netstats.Stats) error {
 	program := tea.NewProgram(
-		newDashboardModel(ctx, events, status),
+		newDashboardModel(ctx, events, status, ns),
 		tea.WithContext(ctx),
 		tea.WithAltScreen(),
 	)
@@ -87,7 +94,7 @@ func RunDashboard(ctx context.Context, events <-chan engine.WorkerEvent, status 
 	return err
 }
 
-func newDashboardModel(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate) dashboardModel {
+func newDashboardModel(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate, ns <-chan netstats.Stats) dashboardModel {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -95,6 +102,7 @@ func newDashboardModel(ctx context.Context, events <-chan engine.WorkerEvent, st
 		ctx:           ctx,
 		events:        events,
 		status:        status,
+		nsChan:        ns,
 		startedAt:     time.Now(),
 		phase:         engine.PhaseDiscovering,
 		progress:      newProgressState(),
@@ -104,11 +112,15 @@ func newDashboardModel(ctx context.Context, events <-chan engine.WorkerEvent, st
 }
 
 func (m dashboardModel) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		waitWorkerEventCmd(m.ctx, m.events),
 		waitStatusUpdateCmd(m.ctx, m.status),
 		dashboardTickCmd(),
-	)
+	}
+	if m.nsChan != nil {
+		cmds = append(cmds, waitNetStatsCmd(m.ctx, m.nsChan))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -185,6 +197,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dashboardContextDoneMsg:
 		m.closed = true
 		return m, tea.Quit
+	case netStatsMsg:
+		s := netstats.Stats(msg)
+		m.lastNS = &s
+		return m, waitNetStatsCmd(m.ctx, m.nsChan)
 	case clockTickMsg:
 		if m.closed {
 			return m, nil
@@ -303,6 +319,16 @@ func (m dashboardModel) viewMonitoring() []string {
 	lines = append(lines, fmt.Sprintf(" %s %s    %s %s",
 		labelStyle.Render("SOCKS5:"), m.socksAddr,
 		labelStyle.Render("HTTP:"), m.httpAddr))
+
+	// Network statistics (when --stats is enabled).
+	if m.lastNS != nil {
+		lines = append(lines, fmt.Sprintf(" %s %s %s (%s)  %s %s (%s)  |  %s %s",
+			labelStyle.Render("Net:"),
+			greenStyle.Render("\u25bc"), netstats.FormatSpeed(m.lastNS.RecvSpeed), netstats.FormatTotal(m.lastNS.TotalRecv),
+			greenStyle.Render("\u25b2"), netstats.FormatSpeed(m.lastNS.SendSpeed), netstats.FormatTotal(m.lastNS.TotalSent),
+			labelStyle.Render("Iface:"), m.lastNS.Interface,
+		))
+	}
 	lines = append(lines, "")
 
 	// Health check history.
@@ -462,6 +488,24 @@ func waitStatusUpdateCmd(ctx context.Context, status <-chan engine.StatusUpdate)
 				return streamClosedMsg{}
 			}
 			return statusUpdateMsg(update)
+		}
+	}
+}
+
+func waitNetStatsCmd(ctx context.Context, ch <-chan netstats.Stats) tea.Cmd {
+	return func() tea.Msg {
+		if ch == nil {
+			<-ctx.Done()
+			return dashboardContextDoneMsg{}
+		}
+		select {
+		case <-ctx.Done():
+			return dashboardContextDoneMsg{}
+		case s, ok := <-ch:
+			if !ok {
+				return streamClosedMsg{}
+			}
+			return netStatsMsg(s)
 		}
 	}
 }

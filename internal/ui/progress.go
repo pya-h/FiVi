@@ -8,15 +8,16 @@ import (
 
 	"fivi/internal/engine"
 	"fivi/internal/logx"
+	"fivi/internal/netstats"
 )
 
 type progressLogger func(format string, args ...any)
 
-func RunLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate, interval time.Duration) {
-	runLogProgressReporter(ctx, events, status, interval, logx.Infof)
+func RunLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate, interval time.Duration, ns <-chan netstats.Stats) {
+	runLogProgressReporter(ctx, events, status, interval, ns, logx.Infof)
 }
 
-func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate, interval time.Duration, logger progressLogger) {
+func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEvent, status <-chan engine.StatusUpdate, interval time.Duration, ns <-chan netstats.Stats, logger progressLogger) {
 	if logger == nil {
 		return
 	}
@@ -29,6 +30,7 @@ func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEven
 
 	state := newProgressState()
 	var lastPhase engine.Phase
+	var lastNS *netstats.Stats
 	for {
 		select {
 		case <-ctx.Done():
@@ -75,11 +77,24 @@ func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEven
 			if update.Phase == engine.PhaseMonitoring && update.Ping > 0 {
 				logger("health: ping=%s probes=%d/%d failures=%d", update.Ping.Round(time.Millisecond), update.ProbeOK, update.ProbeTotal, update.Failures)
 			}
+		case s, ok := <-ns:
+			if !ok {
+				ns = nil
+				continue
+			}
+			lastNS = &s
 		case <-ticker.C:
 			if state.eventCount == 0 {
 				continue
 			}
-			logger("progress snapshot: %s", state.snapshot())
+			snap := state.snapshot()
+			if lastNS != nil {
+				snap += fmt.Sprintf(" net=[%s recv=%s send=%s]",
+					lastNS.Interface,
+					netstats.FormatSpeed(lastNS.RecvSpeed),
+					netstats.FormatSpeed(lastNS.SendSpeed))
+			}
+			logger("progress snapshot: %s", snap)
 		}
 	}
 }

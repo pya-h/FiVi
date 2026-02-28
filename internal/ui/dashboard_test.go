@@ -12,7 +12,7 @@ import (
 )
 
 func TestDashboardUpdateTracksProgressAndCurrentNode(t *testing.T) {
-	model := newDashboardModel(context.Background(), nil, nil)
+	model := newDashboardModel(context.Background(), nil, nil, nil)
 	now := time.Now()
 
 	updated, _ := model.Update(workerEventMsg(engine.WorkerEvent{
@@ -41,7 +41,7 @@ func TestDashboardUpdateTracksProgressAndCurrentNode(t *testing.T) {
 }
 
 func TestDashboardViewIncludesWorkerTable(t *testing.T) {
-	model := newDashboardModel(context.Background(), nil, nil)
+	model := newDashboardModel(context.Background(), nil, nil, nil)
 	model.workers[1] = workerRow{
 		WorkerID:  1,
 		Stage:     engine.WorkerStageProbe,
@@ -62,7 +62,7 @@ func TestDashboardViewIncludesWorkerTable(t *testing.T) {
 }
 
 func TestDashboardQuitKey(t *testing.T) {
-	model := newDashboardModel(context.Background(), nil, nil)
+	model := newDashboardModel(context.Background(), nil, nil, nil)
 	_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	if cmd == nil {
 		t.Fatalf("expected quit command")
@@ -70,7 +70,7 @@ func TestDashboardQuitKey(t *testing.T) {
 }
 
 func TestDashboardPhaseTransition(t *testing.T) {
-	model := newDashboardModel(context.Background(), nil, nil)
+	model := newDashboardModel(context.Background(), nil, nil, nil)
 	if model.phase != engine.PhaseDiscovering {
 		t.Fatalf("initial phase=%s want=discovering", model.phase)
 	}
@@ -101,7 +101,7 @@ func TestDashboardPhaseTransition(t *testing.T) {
 }
 
 func TestDashboardMonitoringView(t *testing.T) {
-	model := newDashboardModel(context.Background(), nil, nil)
+	model := newDashboardModel(context.Background(), nil, nil, nil)
 	model.phase = engine.PhaseMonitoring
 	model.connectedNode = "my-node"
 	model.connProtocol = "vless"

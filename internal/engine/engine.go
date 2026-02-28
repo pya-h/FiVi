@@ -19,6 +19,7 @@ import (
 	"fivi/internal/fetch"
 	"fivi/internal/latency"
 	"fivi/internal/logx"
+	"fivi/internal/pac"
 	"fivi/internal/parser"
 	"fivi/internal/probe"
 	"fivi/internal/routing"
@@ -636,6 +637,20 @@ func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked
 		}
 	}
 
+	// In proxy mode, start PAC script server.
+	var pacSrv *pac.Server
+	if !cfg.IsTunnelMode() {
+		pacAddr := pac.PACAddr(cfg.ListenHTTPAddr)
+		srv, pacErr := pac.Start(pacAddr, cfg.ListenSocksAddr, cfg.RoutingRules)
+		if pacErr != nil {
+			logx.Warnf("PAC server failed to start: %v", pacErr)
+		} else {
+			pacSrv = srv
+			registerCleanup("stop PAC server", srv.Stop)
+			logx.Infof("PAC script available at %s", srv.URL())
+		}
+	}
+
 	printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID(), connectedAt, initialProbe, initialSpeed, 0)
 	emitStatus(status, StatusUpdate{
 		Phase:       PhaseMonitoring,
@@ -650,6 +665,10 @@ func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked
 		HTTPAddr:    cfg.ListenHTTPAddr,
 	})
 	monitorErr := monitorConnection(ctx, cfg, cand, connectedAt, status)
+	if pacSrv != nil {
+		pacSrv.Stop()
+		logx.Infof("PAC server stopped")
+	}
 	if restoreProxy != nil {
 		restoreProxy()
 		logx.Infof("system proxy restored")

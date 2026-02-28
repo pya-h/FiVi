@@ -79,8 +79,8 @@ fivi/
 
 ### Pending (New — from oblivion-desktop comparison)
 - [x] Milestone I (`I1`..`I5`) — Connection resilience: latency pre-scan, post-connect verify, warm standby, graceful cleanup, auto-reconnect
-- [ ] Milestone J (`J1`..`J6`) — Routing rules, DNS config, geo routing, ConfigBuildOpts refactor
-- [ ] Milestone K (`K1`..`K3`) — Speed test, network stats, PAC script
+- [x] Milestone J (`J1`..`J6`) — Routing rules, DNS config, geo routing, ConfigBuildOpts refactor
+- [x] Milestone K (`K1`..`K3`) — Speed test, network stats, PAC script
 - [ ] Milestone L (`L1`..`L5`) — Cross-platform proxy (KDE, macOS, Windows), LAN sharing
 - [ ] Milestone M (`M1`..`M4`) — Binary auto-management, session persistence, daemon mode
 
@@ -534,6 +534,106 @@ Refactored the `Adapter.BuildRuntimeConfigFromURI` method (6 parameters) into `A
 
 ### Next Milestone
 Milestone J complete (J1–J6). Next: **Milestone K**
+
+---
+
+## Task K1: Full Speed Test Subcommand — 2026-02-28
+
+### Summary
+Added `./fivi speedtest` subcommand with download speed (100KB/1MB/10MB trials), upload speed (100KB/500KB/1MB trials), latency (p50/p90), and jitter measurements through a SOCKS proxy.
+
+### Changes
+- **New** `internal/speedtest/speedtest.go` — Core speed test: `Run()` orchestrator, `measureLatency()` (multiple pings, sorted percentiles, jitter via std deviation), `measureDownload()` (multiple size trials via `?bytes=N`), `measureUpload()` (POST random payloads), `FormatResult()` for human-readable output. Configurable via `Config` struct with defaults for Cloudflare/gstatic endpoints. Progress callback via `Log` field.
+- **New** `internal/speedtest/speedtest_test.go` — 18 tests: percentile math (normal/empty/single), jitter (same/varied/edge), latency measurement (success/all-fail), download/upload with httptest, runWithClient integration, FormatResult (normal/no-data/errors), context cancellation, formatDuration, formatBytes, config defaults.
+- **Modified** `main.go` — Added `speedtest` subcommand routing with own `flag.NewFlagSet` (no engine binary required). Flags: `--socks-addr`, `--download-url`, `--upload-url`, `--latency-url`, `--timeout`, `--pings`.
+
+### Files Touched
+- `internal/speedtest/speedtest.go` (new)
+- `internal/speedtest/speedtest_test.go` (new)
+- `main.go` (modified)
+
+### Behavior Impact
+- `./fivi speedtest --socks-addr 127.0.0.1:10808` runs download/upload/latency tests through the proxy.
+- Each test phase logs progress via callback. Results printed in formatted summary.
+- Download/upload report best speed across trials. Latency reports min/p50/p90/max/jitter.
+- Uses own FlagSet — does not require engine binaries to be present.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all 18 speedtest tests + full suite passes
+
+---
+
+## Task K2: Real-Time Network Statistics — 2026-02-28
+
+### Summary
+Added `internal/netstats` package that reads `/proc/net/dev` on Linux, calculates per-second send/recv rates, and exposes a `StartMonitor()` channel for TUI/log consumption. Added `--stats` and `--stats-iface` flags. TUI monitoring view shows recv/send speed with totals. Log mode includes net stats in progress snapshots.
+
+### Changes
+- **New** `internal/netstats/netstats.go` — Shared types (`InterfaceCounters`, `Stats`), `parseNetDev()` parser for `/proc/net/dev` format, `FormatSpeed()` and `FormatTotal()` helpers.
+- **New** `internal/netstats/linux.go` — Linux implementation: `ReadCounters()`, `DetectInterface()` (TUN names for tunnel, most-active for proxy), `StartMonitor()` goroutine that samples every interval and computes deltas.
+- **New** `internal/netstats/other.go` — Stub for non-Linux platforms (returns errors, closed channel).
+- **New** `internal/netstats/netstats_test.go` — 6 tests: parsing (normal/empty/header-only/malformed), FormatSpeed, FormatTotal.
+- **Modified** `internal/config/config.go` — Added `NetStats bool` and `NetStatsIface string` fields, `--stats` and `--stats-iface` flags.
+- **Modified** `internal/ui/dashboard.go` — Added `netStatsMsg` type, `nsChan` and `lastNS` fields on model, `waitNetStatsCmd`, netstats display in monitoring view (recv/send speed with totals and interface name). `RunDashboard` and `newDashboardModel` accept `ns <-chan netstats.Stats`.
+- **Modified** `internal/ui/progress.go` — `RunLogProgressReporter` and `runLogProgressReporter` accept `ns <-chan netstats.Stats`. Logs net stats in progress snapshot when available.
+- **Modified** `main.go` — Starts netstats monitor when `--stats` enabled, passes channel to TUI/log mode.
+- **Modified** `internal/ui/dashboard_test.go` — Updated `newDashboardModel` calls with nil netstats channel.
+- **Modified** `internal/ui/progress_test.go` — Updated `runLogProgressReporter` call with nil netstats channel.
+
+### Files Touched
+- `internal/netstats/netstats.go` (new)
+- `internal/netstats/linux.go` (new)
+- `internal/netstats/other.go` (new)
+- `internal/netstats/netstats_test.go` (new)
+- `internal/config/config.go` (modified)
+- `internal/ui/dashboard.go` (modified)
+- `internal/ui/progress.go` (modified)
+- `internal/ui/dashboard_test.go` (modified)
+- `internal/ui/progress_test.go` (modified)
+- `main.go` (modified)
+
+### Behavior Impact
+- `--stats` enables real-time network statistics in TUI and log mode.
+- `--stats-iface eth0` overrides interface auto-detection.
+- TUI monitoring view shows: `Net: ▼ speed (total)  ▲ speed (total)  |  Iface: name`.
+- Log mode includes net stats in progress snapshots.
+- Off by default — no overhead when not enabled.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all 18 packages pass (6 new netstats tests + updated UI tests)
+
+---
+
+## Task K3: PAC Script Server for Proxy Mode — 2026-02-28
+
+### Summary
+Added `internal/pac` package that generates a `FindProxyForURL` JavaScript PAC script from routing rules and serves it via HTTP. Auto-starts in proxy mode on `http_port+1`, stops on disconnect.
+
+### Changes
+- **New** `internal/pac/pac.go` — `Generate()` builds PAC script with localhost bypass, private IP ranges (10/172.16/192.168/169.254), routing rule domain/IP/CIDR bypass, and SOCKS5 catch-all. `Start()` creates HTTP server serving `/proxy.pac` with correct MIME type. `PACAddr()` derives port from HTTP proxy address (+1). `cidrToIPMask()` converts CIDR to dotted-decimal for `isInNet()`.
+- **New** `internal/pac/pac_test.go` — 10 tests: default script generation, domain rules (exact + wildcard), IP rules, CIDR rules, negated rules skipped, CIDR conversion (valid + invalid), PACAddr derivation, server start/serve (HTTP fetch + content-type check), stop idempotent.
+- **Modified** `internal/engine/engine.go` — In `connectAndMonitorOne()`, auto-starts PAC server in proxy mode after system proxy setup, logs PAC URL, registers cleanup hook, stops on disconnect.
+
+### Files Touched
+- `internal/pac/pac.go` (new)
+- `internal/pac/pac_test.go` (new)
+- `internal/engine/engine.go` (modified)
+
+### Behavior Impact
+- In proxy mode, PAC script is automatically served at `http://127.0.0.1:10810/proxy.pac` (port = HTTP port + 1).
+- Browsers/apps can use this URL for automatic proxy configuration.
+- PAC script bypasses localhost, private IPs, and all non-negated routing rules (domain, IP, CIDR).
+- PAC server auto-stops on disconnect/failover.
+- No impact on tunnel mode.
+
+### Validation
+- `go build ./...` — passes
+- `go test ./...` — all 19 test packages pass (10 new PAC tests + full suite)
+
+### Next Milestone
+Milestone K complete (K1–K3). Next: **Milestone L**
 
 ## Context Update Protocol (mandatory)
 After each completed task, append a section to this file:
