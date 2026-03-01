@@ -44,8 +44,8 @@ func TestNormalizeMode(t *testing.T) {
 		{in: "tunnel", want: "tunnel"},
 		{in: "TUNNEL", want: "tunnel"},
 		{in: "PROXY", want: "proxy"},
-		{in: "invalid", want: "tunnel"},
-		{in: "", want: "tunnel"},
+		{in: "invalid", want: "proxy"},
+		{in: "", want: "proxy"},
 	}
 
 	for _, tc := range tests {

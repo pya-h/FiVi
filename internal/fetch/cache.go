@@ -10,19 +10,27 @@ import (
 )
 
 const (
-	defaultCacheDir = ".cache/sources"
+	defaultCacheDir = ".fivi/cache/sources"
 	cacheTTL        = 6 * time.Hour
 )
 
 type cacheEntry struct {
 	Source    string   `json:"source"`
-	Links    []string `json:"links"`
-	FetchedAt string  `json:"fetched_at"`
+	Links     []string `json:"links"`
+	FetchedAt string   `json:"fetched_at"`
 }
 
 // CacheDir returns the directory used for source caching, creating it if needed.
 func cacheDir() string {
-	dir := defaultCacheDir
+	dir := os.Getenv("FIVI_CACHE_DIR")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err == nil && home != "" {
+			dir = filepath.Join(home, defaultCacheDir)
+		} else {
+			dir = filepath.Join(".", defaultCacheDir)
+		}
+	}
 	_ = os.MkdirAll(dir, 0o755)
 	return dir
 }
@@ -40,7 +48,7 @@ func SaveToCache(source string, links []string) {
 	dir := cacheDir()
 	entry := cacheEntry{
 		Source:    source,
-		Links:    links,
+		Links:     links,
 		FetchedAt: time.Now().Format(time.RFC3339),
 	}
 	data, err := json.Marshal(entry)

@@ -211,3 +211,34 @@ After each completed task, append a section to this file:
 - Behavior impact
 - Validation performed (`go test`, `go build`, manual)
 - Next task or blocker
+
+## Context Update — 2026-03-02 (Debug Sweep: cache + connect defaults)
+
+- **Task ID and date**: `DEBUG-2026-03-02`
+- **Summary of changes**:
+  - Fixed source cache persistence path to be stable across runs/working directories (`~/.fivi/cache/sources` by default, overridable via `FIVI_CACHE_DIR`).
+  - Fixed cache fallback behavior so cached links are used when a source fetch fails **or** returns zero links.
+  - Added cache reuse for sources skipped in cooldown during discovery rounds.
+  - Adjusted safer runtime defaults for higher connection success on mixed environments: default mode is now `proxy`, startup readiness timeout increased to `8s`, and implicit tunnel→singbox engine override removed.
+  - Updated docs to reflect default mode and cache location semantics.
+- **Files touched**:
+  - `internal/fetch/cache.go`
+  - `internal/fetch/cache_test.go`
+  - `internal/engine/engine.go`
+  - `internal/engine/fetch_only.go`
+  - `internal/config/config.go`
+  - `internal/config/config_test.go`
+  - `README.md`
+- **Behavior impact**:
+  - FiVi now reliably reuses last known-good source data even when sources are blocked, empty, or temporarily skipped by cooldown.
+  - Cache persistence is no longer tied to invocation directory.
+  - Default startup path favors compatibility (`xray + proxy`) while preserving explicit user control for tunnel and engine selection.
+- **Validation performed**:
+  - `go test ./...` → pass (`174` tests)
+  - `go build ./...` → pass
+  - Manual binary checks:
+    - `bins/xray/amd64/xray version` → `Xray 26.2.6`
+    - `bins/singbox/amd64/sing-box version` → `sing-box 1.12.22`
+    - Both binaries are executable Linux `ELF 64-bit`.
+- **Next task or blocker**:
+  - Next planned implementation remains Milestone L (`L1` KDE proxy support).

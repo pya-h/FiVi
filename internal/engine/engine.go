@@ -221,6 +221,10 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker, events chan<- WorkerEvent, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) ([]Ranked, error) {
 	roundSources := selectSourcesForRound(cfg.BootstrapSources, health, time.Now())
 	logx.Infof("fetching subscriptions from %d/%d sources", len(roundSources), len(cfg.BootstrapSources))
+	attemptedSources := make(map[string]struct{}, len(roundSources))
+	for _, src := range roundSources {
+		attemptedSources[src] = struct{}{}
+	}
 
 	fetchTimeout := cfg.FetchTimeout
 	if fetchTimeout <= 0 {
@@ -233,10 +237,14 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 			// Cache successful fetches for restricted-network resilience.
 			fetch.SaveToCache(r.Source, r.Links)
 		}
-		if r.Err != nil {
-			// Try cached data when live fetch fails (common in restricted regions).
+		if r.Err != nil || len(r.Links) == 0 {
+			// Try cached data when live fetch fails or source returns no links.
 			if cached, ok := fetch.LoadFromCache(r.Source); ok {
-				logx.Warnf("source failed %s: %v (using %d cached links)", r.Source, r.Err, len(cached))
+				if r.Err != nil {
+					logx.Warnf("source failed %s: %v (using %d cached links)", r.Source, r.Err, len(cached))
+				} else {
+					logx.Warnf("source returned no links %s (using %d cached links)", r.Source, len(cached))
+				}
 				if health != nil {
 					health.Observe(r.Source, len(cached), nil, time.Now())
 				}
@@ -251,8 +259,23 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 			logx.Warnf("source failed %s: %v", r.Source, r.Err)
 			continue
 		}
+		if len(r.Links) == 0 {
+			logx.Warnf("source returned no links %s", r.Source)
+			continue
+		}
 		logx.Infof("source ok %s (%d links)", r.Source, len(r.Links))
 		all = append(all, r.Links...)
+	}
+
+	// Sources skipped this round (cooldown) can still contribute cached links.
+	for _, src := range cfg.BootstrapSources {
+		if _, attempted := attemptedSources[src]; attempted {
+			continue
+		}
+		if cached, ok := fetch.LoadFromCache(src); ok {
+			logx.Warnf("source in cooldown %s (using %d cached links)", src, len(cached))
+			all = append(all, cached...)
+		}
 	}
 	if health != nil {
 		stats := health.Snapshot()

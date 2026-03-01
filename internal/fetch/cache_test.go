@@ -1,18 +1,13 @@
 package fetch
 
 import (
-	"os"
 	"testing"
 )
 
 func TestCacheRoundTrip(t *testing.T) {
 	// Use a temporary directory for cache.
 	tmpDir := t.TempDir()
-	origDir, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv("FIVI_CACHE_DIR", tmpDir)
 
 	source := "https://example.com/test-source"
 	links := []string{"vmess://aaa", "vless://bbb"}
@@ -35,11 +30,7 @@ func TestCacheRoundTrip(t *testing.T) {
 
 func TestCacheMiss(t *testing.T) {
 	tmpDir := t.TempDir()
-	origDir, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv("FIVI_CACHE_DIR", tmpDir)
 
 	_, ok := LoadFromCache("https://example.com/nonexistent")
 	if ok {
@@ -49,11 +40,7 @@ func TestCacheMiss(t *testing.T) {
 
 func TestCacheEmptyLinksNotSaved(t *testing.T) {
 	tmpDir := t.TempDir()
-	origDir, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv("FIVI_CACHE_DIR", tmpDir)
 
 	SaveToCache("https://example.com/empty", nil)
 	_, ok := LoadFromCache("https://example.com/empty")

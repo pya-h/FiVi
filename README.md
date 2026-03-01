@@ -10,7 +10,7 @@ A Go CLI that discovers free V2Ray/proxy share links from public sources, valida
 Sources (30+ URLs)
         │
         ▼
-  Fetch & Decode ──────── Cache (.cache/sources/, 6h TTL)
+      Fetch & Decode ──────── Cache (~/.fivi/cache/sources/, 6h TTL)
         │                      ▲ fallback on fetch failure
         ▼
   Parse & Deduplicate
@@ -102,7 +102,7 @@ GOOS=linux GOARCH=arm64 go build -o fivi-linux-arm64 .
 ## Quick Start
 
 ```bash
-# Default: iran profile, xray engine, tunnel mode, interactive TUI
+# Default: iran profile, xray engine, proxy mode, interactive TUI
 ./fivi
 
 # Global profile with sing-box in proxy mode, no TUI
@@ -118,7 +118,7 @@ FIVI_XRAY_BIN=/usr/local/bin/xray ./fivi
 Once connected, FiVi exposes:
 - **SOCKS5** at `127.0.0.1:10808` (default)
 - **HTTP** at `127.0.0.1:10809` (default)
-- **TUN** device routing all system traffic (tunnel mode with sing-box only)
+- **TUN** device routing all system traffic (when `--mode tunnel` is enabled)
 
 ---
 
@@ -228,7 +228,7 @@ Creates a TUN device that captures all system traffic — no per-app configurati
 sudo ./fivi --engine singbox --mode tunnel
 ```
 
-> **Note:** Tunnel mode with `--engine xray` is not supported. Xray does not implement TUN. FiVi will fail at startup if you combine `--engine xray --mode tunnel`.
+> **Note:** Tunnel mode requires elevated privileges/capabilities for TUN setup and routing on your OS.
 
 ---
 
@@ -318,7 +318,7 @@ FiVi ships with 30+ built-in public subscription URLs (GitHub raw content from p
 
 ### Source Caching
 
-Fetched source content is cached to `.cache/sources/` with a 6-hour TTL.
+Fetched source content is cached to `~/.fivi/cache/sources/` with a 6-hour TTL (or `FIVI_CACHE_DIR` if set).
 
 - Cache keys are SHA256 hashes of the source URL
 - On fetch failure, FiVi falls back to stale cache — even if TTL expired
@@ -448,7 +448,7 @@ FIVI_SINGBOX_BIN=/path/to/sing-box
 # Total budget per candidate across all retry attempts (default: 24s)
 --candidate-timeout 30s
 
-# Max wait for engine listeners to become ready (default: 4s)
+# Max wait for engine listeners to become ready (default: 8s)
 --startup-timeout 5s
 
 # Timeout per source URL fetch (default: 25s)
@@ -593,7 +593,7 @@ FiVi/
 │   └── logx/logx.go              # Synchronized logging
 ├── bins/                          # Engine binaries (per arch)
 ├── output/                        # Generated output files
-├── .cache/sources/                # Source fetch cache
+├── ~/.fivi/cache/sources/         # Source fetch cache (default location)
 ├── go.mod
 └── go.sum
 ```
@@ -642,6 +642,6 @@ FiVi/
 
 - Free public nodes are volatile and can expire at any time. Pass your own source list with `--sources` for reliability.
 - The `iran` profile enforces that nodes must reach both `x.com` and `youtube.com` — nodes that bypass only some censored sites are ranked lower or excluded.
-- Tunnel mode (`--mode tunnel`) requires root privileges and the `singbox` engine. Xray does not support TUN.
-- Source caching (`.cache/sources/`) persists across runs. Delete the directory to force fresh fetches.
+- Tunnel mode (`--mode tunnel`) requires root/admin privileges or required capabilities for TUN setup on your OS.
+- Source caching (`~/.fivi/cache/sources/` by default, or `FIVI_CACHE_DIR`) persists across runs. Delete cache files to force fresh fetches.
 - Output files in `output/` are overwritten each discovery round.

@@ -35,15 +35,23 @@ func FetchOnly(ctx context.Context, cfg config.AppConfig) error {
 			totalLinks += len(r.Links)
 			logx.Infof("source ok %s (%d links)", r.Source, len(r.Links))
 			all = append(all, r.Links...)
-		} else if r.Err != nil {
+		} else if r.Err != nil || len(r.Links) == 0 {
 			failSources++
 			// Try cached data as fallback.
 			if cached, ok := fetch.LoadFromCache(r.Source); ok {
-				logx.Warnf("source failed %s: %v (using %d cached links)", r.Source, r.Err, len(cached))
+				if r.Err != nil {
+					logx.Warnf("source failed %s: %v (using %d cached links)", r.Source, r.Err, len(cached))
+				} else {
+					logx.Warnf("source returned no links %s (using %d cached links)", r.Source, len(cached))
+				}
 				totalLinks += len(cached)
 				all = append(all, cached...)
 			} else {
-				logx.Warnf("source failed %s: %v (no cache)", r.Source, r.Err)
+				if r.Err != nil {
+					logx.Warnf("source failed %s: %v (no cache)", r.Source, r.Err)
+				} else {
+					logx.Warnf("source returned no links %s (no cache)", r.Source)
+				}
 			}
 		}
 		if health != nil {
@@ -69,6 +77,6 @@ func FetchOnly(ctx context.Context, cfg config.AppConfig) error {
 	logx.Infof("fetch complete: %d/%d sources ok, %d total links, %d unique configs",
 		okSources, len(roundSources), totalLinks, len(cands))
 	logx.Infof("configs written to output/all_configs.txt")
-	logx.Infof("cache stored in .cache/sources/")
+	logx.Infof("cache stored under FIVI_CACHE_DIR or ~/.fivi/cache/sources/")
 	return nil
 }

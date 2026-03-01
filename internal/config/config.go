@@ -46,7 +46,7 @@ type AppConfig struct {
 	AutoReconnect    bool
 	RoutingRules     []routing.Rule
 	DNS              dns.Config
-	GeoBypass        string              // country code for geo-based routing (e.g. "ir")
+	GeoBypass        string               // country code for geo-based routing (e.g. "ir")
 	GeoRuleSets      *routing.GeoRuleSets // resolved at startup by engine
 	NetStats         bool                 // enable real-time network statistics
 	NetStatsIface    string               // override interface for netstats (auto-detect if empty)
@@ -64,7 +64,7 @@ func ParseFlags() AppConfig {
 	var (
 		profileName      = flag.String("profile", "iran", "operational profile name")
 		engine           = flag.String("engine", "xray", "engine backend: xray|singbox")
-		mode             = flag.String("mode", "tunnel", "connection mode: proxy|tunnel (tunnel uses TUN interface, requires root)")
+		mode             = flag.String("mode", "proxy", "connection mode: proxy|tunnel (tunnel uses TUN interface, may require root/capabilities)")
 		xrayBin          = flag.String("xray-bin", "", "override path to xray binary (auto-resolved from bins/ by default)")
 		singboxBin       = flag.String("singbox-bin", "", "override path to sing-box binary (auto-resolved from bins/ by default)")
 		socksAddr        = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
@@ -74,7 +74,7 @@ func ParseFlags() AppConfig {
 		maxCandidates    = flag.Int("max-candidates", 0, "max unique candidates to test per round (0 = no limit)")
 		topCount         = flag.Int("top", 5, "number of top ranked candidates to print")
 		candidateTimeout = flag.Duration("candidate-timeout", 24*time.Second, "timeout budget per candidate across all attempts")
-		startupTimeout   = flag.Duration("startup-timeout", 4*time.Second, "max wait for local proxy listeners to become ready after engine start")
+		startupTimeout   = flag.Duration("startup-timeout", 8*time.Second, "max wait for local proxy listeners to become ready after engine start")
 		fetchTimeout     = flag.Duration("fetch-timeout", 25*time.Second, "timeout per source URL fetch")
 		probeTimeout     = flag.Duration("probe-timeout", defaultProfile.ProbeTimeout, "timeout per probe request")
 		minProbeSuccess  = flag.Int("min-success", defaultProfile.ProbeMinOK, "minimum successful target probes required")
@@ -129,13 +129,6 @@ func ParseFlags() AppConfig {
 
 	// Normalise connection mode.
 	modeName := normalizeMode(*mode)
-
-	// When engine is not explicitly set and mode is tunnel, default to singbox
-	// (singbox has more mature TUN with auto_route). Users can override with
-	// --engine xray for native xray TUN (requires root + Linux).
-	if modeName == "tunnel" && !visited["engine"] {
-		engineName = "singbox"
-	}
 
 	// Resolve binary paths: explicit flag > env var > auto-detect from bins/.
 	xrayBinPath := resolveBinary("xray", *xrayBin, "FIVI_XRAY_BIN", visited["xray-bin"])
@@ -287,7 +280,7 @@ func normalizeMode(v string) string {
 	case "proxy", "tunnel":
 		return v
 	default:
-		return "tunnel"
+		return "proxy"
 	}
 }
 
