@@ -144,6 +144,27 @@ FIVI_XRAY_BIN=/usr/local/bin/xray ./fivi
 
 FiVi saves the last working config in `~/.fivi/session.json` and, on restart, tries it first when it is fresh (within 1 hour) before doing full rediscovery.
 
+### Daemon Mode
+
+```bash
+# Start FiVi in background mode
+./fivi daemon --profile iran --engine xray --mode proxy
+
+# Check daemon status
+./fivi status
+
+# Stop daemon gracefully
+./fivi stop
+```
+
+Daemon runtime files:
+
+```text
+~/.fivi/fivi.pid
+~/.fivi/fivi.log
+~/.fivi/fivi.log.1   # rotated previous log when size limit is reached
+```
+
 Once connected, FiVi exposes:
 - **SOCKS5** at `127.0.0.1:10808` (default)
 - **HTTP** at `127.0.0.1:10809` (default)

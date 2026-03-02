@@ -5,14 +5,18 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"fivi/internal/binmgr"
 	"fivi/internal/cleanup"
 	"fivi/internal/config"
+	"fivi/internal/daemon"
 	"fivi/internal/engine"
 	"fivi/internal/logx"
 	"fivi/internal/netstats"
@@ -45,6 +49,18 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "update" {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 		runUpdate()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "daemon" {
+		runDaemon(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "stop" {
+		runStop()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "status" {
+		runStatus()
 		return
 	}
 
@@ -214,6 +230,148 @@ func runStartupUpdateCheck() {
 			}
 		}
 	}
+}
+
+func runDaemon(args []string) {
+	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
+	runChild := fs.Bool("run-child", false, "internal flag: run daemon child process")
+	fs.Parse(args)
+	appArgs := fs.Args()
+
+	if *runChild {
+		runDaemonChild(appArgs)
+		return
+	}
+
+	paths, err := daemon.DefaultPaths()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon failed: %v\n", err)
+		os.Exit(1)
+	}
+	if pid, err := daemon.ReadPID(paths.PIDFile); err == nil && daemon.ProcessRunning(pid) {
+		fmt.Fprintf(os.Stderr, "daemon already running with pid %d\n", pid)
+		os.Exit(1)
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	cmdArgs := append([]string{"daemon", "--run-child"}, appArgs...)
+	cmd := exec.Command(exe, cmdArgs...)
+	devNull, _ := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if devNull != nil {
+		defer devNull.Close()
+		cmd.Stdin = devNull
+		cmd.Stdout = devNull
+		cmd.Stderr = devNull
+	}
+	daemon.ConfigureDetachedProcess(cmd)
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon failed to start: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("daemon started pid=%d\n", cmd.Process.Pid)
+	fmt.Printf("log file: %s\n", paths.LogFile)
+}
+
+func runDaemonChild(appArgs []string) {
+	paths, err := daemon.DefaultPaths()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon child failed: %v\n", err)
+		os.Exit(1)
+	}
+	logFile, err := daemon.OpenLogFile(paths.LogFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon child failed: %v\n", err)
+		os.Exit(1)
+	}
+	defer logFile.Close()
+	restoreLog := logx.SetOutput(io.MultiWriter(logFile, os.Stdout))
+	defer restoreLog()
+
+	if err := daemon.WritePID(paths.PIDFile, os.Getpid()); err != nil {
+		logx.Errorf("daemon child: failed writing pid file: %v", err)
+		os.Exit(1)
+	}
+	defer daemon.RemovePID(paths.PIDFile)
+
+	os.Args = append([]string{os.Args[0]}, appArgs...)
+	cfg := config.ParseFlags()
+	cfg.NoTUI = true
+
+	if cfg.CheckUpdate {
+		runStartupUpdateCheck()
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	engine.SetCleanupManager(cleanupMgr)
+	defer cleanupMgr.Run()
+
+	logx.Infof("daemon mode started pid=%d", os.Getpid())
+	if err := runWithMode(ctx, cfg, ui.ModeLog); err != nil && !errors.Is(err, context.Canceled) {
+		logx.Errorf("daemon fatal: %v", err)
+		cleanupMgr.Run()
+		os.Exit(1)
+	}
+	logx.Infof("daemon mode stopped")
+}
+
+func runStop() {
+	paths, err := daemon.DefaultPaths()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
+		os.Exit(1)
+	}
+	pid, err := daemon.ReadPID(paths.PIDFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon is not running\n")
+		return
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
+		os.Exit(1)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !daemon.ProcessRunning(pid) {
+			daemon.RemovePID(paths.PIDFile)
+			fmt.Printf("daemon stopped pid=%d\n", pid)
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	fmt.Printf("daemon stop signal sent pid=%d (still shutting down)\n", pid)
+}
+
+func runStatus() {
+	paths, err := daemon.DefaultPaths()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "status failed: %v\n", err)
+		os.Exit(1)
+	}
+	pid, err := daemon.ReadPID(paths.PIDFile)
+	if err != nil {
+		fmt.Println("daemon not running")
+		return
+	}
+	if daemon.ProcessRunning(pid) {
+		fmt.Printf("daemon running pid=%d log=%s\n", pid, paths.LogFile)
+		return
+	}
+	daemon.RemovePID(paths.PIDFile)
+	fmt.Printf("daemon not running (stale pid %s removed)\n", strconv.Itoa(pid))
 }
 
 func runWithMode(ctx context.Context, cfg config.AppConfig, mode ui.Mode) error {

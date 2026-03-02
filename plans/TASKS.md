@@ -365,7 +365,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/session/session.go`, `session_test.go`, integration in `engine.go`.
 - Done when: restart tries last working config before rediscovery.
 
-59. [ ] `M4` Add daemon mode for background operation.
+59. [x] `M4` Add daemon mode for background operation.
 - Add `./fivi daemon` subcommand.
 - Detach from terminal, write PID to `~/.fivi/fivi.pid`.
 - Auto-reconnect on failure with exponential backoff.

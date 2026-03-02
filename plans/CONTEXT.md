@@ -198,3 +198,28 @@
     - `go build ./...`
 - **Next task**:
   - `M4` Add daemon mode (`daemon`, `stop`, `status`) with PID/log handling.
+
+## 14) Milestone M4 Update (2026-03-02)
+- **What changed**:
+  - Added daemon lifecycle commands: `./fivi daemon`, `./fivi stop`, `./fivi status`.
+  - Implemented detached daemon bootstrap (`daemon --run-child` internal mode), PID file write/remove, status checks, SIGTERM stop flow, and daemon log file setup with size-based rotation (`fivi.log` -> `fivi.log.1` at ~5MB).
+  - Daemon runtime forces log mode (`--no-tui`) and reuses normal engine run path for auto-reconnect/failover behavior.
+- **Files touched**:
+  - `main.go`
+  - `internal/daemon/daemon.go`
+  - `internal/daemon/detach_unix.go`
+  - `internal/daemon/detach_windows.go`
+  - `internal/daemon/daemon_test.go`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Users can start FiVi in background mode and manage lifecycle using PID-based commands.
+  - Daemon logs persist to `~/.fivi/fivi.log` with lightweight rotation.
+  - Stale PID file entries are cleaned up by `status` when process is not running.
+- **Validation results**:
+  - Focused daemon tests pass:
+    - `go test ./internal/daemon`
+  - Full suite/build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task**:
+  - Milestone M is complete; next work should be defined in a new milestone set or backlog extension.
