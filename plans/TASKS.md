@@ -357,7 +357,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/binmgr/update.go`, subcommand in `main.go`.
 - Done when: `./fivi update` updates binaries to latest version.
 
-58. [ ] `M3` Add session persistence for fast reconnect.
+58. [x] `M3` Add session persistence for fast reconnect.
 - Save last working config URI + score + timestamp to `~/.fivi/session.json`.
 - On startup, if session file exists and is fresh (<1h), try persisted config first.
 - Skip full discovery if persisted config still works.

@@ -171,3 +171,30 @@
     - `go build ./...`
 - **Next task**:
   - `M3` Add session persistence for fast reconnect.
+
+## 13) Review + M3 Update (2026-03-02)
+- **Review/debug on latest tasks (M1 + M2)**:
+  - Found and fixed an M2 edge case where `UpdateStatus.Err` could remain set after a successful reinstall path, causing false failure reporting from `./fivi update`.
+  - Added regression coverage to ensure successful install clears prior resolve/version-probe errors.
+- **M3 implementation**:
+  - Added session persistence module to save/load last working candidate in `~/.fivi/session.json`.
+  - Engine startup now attempts a fresh persisted session first (max age: 1 hour) before normal discovery.
+  - On successful connection establishment, engine now persists `raw_uri`, `score`, and `saved_at`.
+- **Files touched**:
+  - `internal/binmgr/update.go`
+  - `internal/binmgr/update_test.go`
+  - `internal/session/session.go`
+  - `internal/session/session_test.go`
+  - `internal/engine/engine.go`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - `./fivi update` no longer reports false engine errors when recovery install succeeds.
+  - Restarted runs now try the previously working config first (when session is fresh), reducing time-to-connect.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/session ./internal/engine ./internal/binmgr`
+  - Full suite and build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task**:
+  - `M4` Add daemon mode (`daemon`, `stop`, `status`) with PID/log handling.

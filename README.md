@@ -140,6 +140,10 @@ FIVI_XRAY_BIN=/usr/local/bin/xray ./fivi
 ./fivi --check-update
 ```
 
+### Session Resume
+
+FiVi saves the last working config in `~/.fivi/session.json` and, on restart, tries it first when it is fresh (within 1 hour) before doing full rediscovery.
+
 Once connected, FiVi exposes:
 - **SOCKS5** at `127.0.0.1:10808` (default)
 - **HTTP** at `127.0.0.1:10809` (default)

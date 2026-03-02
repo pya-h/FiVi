@@ -24,6 +24,7 @@ import (
 	"fivi/internal/parser"
 	"fivi/internal/probe"
 	"fivi/internal/routing"
+	"fivi/internal/session"
 	"fivi/internal/sources"
 	"fivi/internal/sysproxy"
 )
@@ -84,8 +85,12 @@ var (
 	waitForProxyReadyFn = waitForProxyReady
 	reserveLocalAddrsFn = reserveLocalAddrs
 	enableSystemProxyFn = sysproxy.Enable
+	loadSessionFn       = session.LoadDefault
+	saveSessionFn       = session.SaveDefault
 	cleanupMgr          *cleanup.Manager
 )
+
+const persistedSessionMaxAge = time.Hour
 
 // SetCleanupManager sets the global cleanup manager used by the engine to
 // register safety-net cleanup hooks (proxy restore, engine kill).
@@ -164,6 +169,28 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 	}
 
 	health := sources.NewHealthTracker(cfg.BootstrapSources)
+
+	if persisted, ok, err := loadSessionFn(persistedSessionMaxAge, time.Now()); err != nil {
+		logx.Warnf("session: failed to load persisted state: %v", err)
+	} else if ok {
+		name := "persisted"
+		scheme := "unknown"
+		if parts := strings.SplitN(strings.TrimSpace(persisted.RawURI), "://", 2); len(parts) == 2 {
+			scheme = strings.ToLower(strings.TrimSpace(parts[0]))
+		}
+		persistedCandidate := Ranked{
+			Raw:    persisted.RawURI,
+			Name:   name,
+			Scheme: scheme,
+			Score:  persisted.Score,
+		}
+		logx.Infof("trying persisted session candidate first (saved_at=%s)", persisted.SavedAt.Format(time.RFC3339))
+		if err := connectAndMonitor(ctx, cfg, []Ranked{persistedCandidate}, status, adapter, engineBin); err == nil || errors.Is(err, context.Canceled) {
+			return err
+		} else {
+			logx.Warnf("persisted session candidate failed, falling back to discovery: %v", err)
+		}
+	}
 
 	var standby *warmStandby
 
@@ -639,6 +666,13 @@ func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked
 	}
 
 	connectedAt := time.Now()
+	if saveErr := saveSessionFn(session.State{
+		RawURI:  cand.Raw,
+		Score:   cand.Score,
+		SavedAt: connectedAt,
+	}); saveErr != nil {
+		logx.Warnf("session: failed to persist last working candidate: %v", saveErr)
+	}
 	if cfg.IsTunnelMode() {
 		logx.Infof("tunnel mode active: all system traffic is routed through the proxy")
 	}

@@ -62,6 +62,7 @@ func (i *Installer) checkOrUpdate(ctx context.Context, apply bool) ([]UpdateStat
 			if installErr != nil {
 				st.Err = installErr
 			} else {
+				st.Err = nil
 				st.Updated = true
 				st.Path = res.Path
 				st.Installed = res.Version
