@@ -290,3 +290,33 @@ After each completed task, append a section to this file:
   - `go build ./...` → pass
 - **Next task or blocker**:
   - `L2` is intentionally skipped per current direction; next practical milestone item is `L4` (Linux desktop environment auto-detection dispatch).
+
+## Context Update — 2026-03-02 (Milestone L4: Linux DE auto-detection)
+
+- **Task ID and date**: `L4-2026-03-02`
+- **Summary of changes**:
+  - Added explicit Linux desktop environment detection module with GNOME/KDE/unknown classification.
+  - Updated `sysproxy.Enable` to dispatch by Linux desktop environment:
+    - KDE → KDE backend
+    - GNOME → GNOME backend
+    - Unknown DE → warning + best-effort fallback (GNOME if `gsettings` exists, else KDE backend)
+  - Refactored GNOME implementation into a dedicated `enableGNOME` helper.
+  - Removed duplicated KDE session detection helper from KDE backend and centralized detection logic.
+  - Added detection-focused tests and updated KDE-related test accordingly.
+  - Marked `L4` as completed in `plans/TASKS.md`.
+- **Files touched**:
+  - `internal/sysproxy/detect.go`
+  - `internal/sysproxy/detect_test.go`
+  - `internal/sysproxy/gnome.go`
+  - `internal/sysproxy/kde.go`
+  - `internal/sysproxy/kde_test.go`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Linux system proxy setup now auto-selects GNOME/KDE implementation without manual intervention.
+  - Unsupported Linux desktops degrade gracefully with warning and backend fallback attempts.
+- **Validation performed**:
+  - `go test ./internal/sysproxy` (targeted via test tool) → pass
+  - `go test ./...` → pass (`186` tests)
+  - `go build ./...` → pass
+- **Next task or blocker**:
+  - `L2` remains skipped by direction; next actionable milestone item is `L5` (LAN sharing mode).

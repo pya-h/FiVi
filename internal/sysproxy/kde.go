@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -75,11 +74,6 @@ func findKWriteConfigBinary() (string, bool) {
 		}
 	}
 	return "", false
-}
-
-func isKDESession() bool {
-	desktop := strings.ToLower(strings.TrimSpace(os.Getenv("XDG_CURRENT_DESKTOP") + ":" + os.Getenv("DESKTOP_SESSION")))
-	return strings.Contains(desktop, "kde") || strings.Contains(desktop, "plasma")
 }
 
 func kdeConfigPath() (string, error) {

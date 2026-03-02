@@ -2,6 +2,7 @@ package sysproxy
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -14,16 +15,32 @@ import (
 // previous state. If gsettings is not available, Enable returns a no-op
 // restore and nil error.
 func Enable(socksHost string, socksPort int, httpHost string, httpPort int) (restore func(), err error) {
-	noop := func() {}
 	if runtime.GOOS == "windows" {
 		return EnableWindows(socksHost, socksPort, httpHost, httpPort)
 	}
-	if isKDESession() {
-		return EnableKDE(socksHost, socksPort, httpHost, httpPort)
+
+	if runtime.GOOS == "linux" {
+		switch DetectLinuxDesktopEnvironment() {
+		case DesktopKDE:
+			return EnableKDE(socksHost, socksPort, httpHost, httpPort)
+		case DesktopGNOME:
+			return enableGNOME(socksHost, socksPort, httpHost, httpPort)
+		default:
+			log.Printf("sysproxy: unsupported linux desktop environment; attempting GNOME/KDE backends")
+			if _, err := exec.LookPath("gsettings"); err == nil {
+				return enableGNOME(socksHost, socksPort, httpHost, httpPort)
+			}
+			return EnableKDE(socksHost, socksPort, httpHost, httpPort)
+		}
 	}
 
+	return enableGNOME(socksHost, socksPort, httpHost, httpPort)
+}
+
+func enableGNOME(socksHost string, socksPort int, httpHost string, httpPort int) (restore func(), err error) {
+	noop := func() {}
 	if _, err := exec.LookPath("gsettings"); err != nil {
-		return EnableKDE(socksHost, socksPort, httpHost, httpPort)
+		return noop, nil
 	}
 
 	// Save current state.

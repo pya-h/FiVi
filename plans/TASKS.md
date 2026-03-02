@@ -323,7 +323,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/sysproxy/windows.go`, `windows_test.go`.
 - Done when: Windows proxy is set on connect and restored on disconnect.
 
-54. [ ] `L4` Auto-detect desktop environment on Linux.
+54. [x] `L4` Auto-detect desktop environment on Linux.
 - Check `$XDG_CURRENT_DESKTOP`, `$DESKTOP_SESSION`, `$GNOME_DESKTOP_SESSION_ID`.
 - Select GNOME, KDE, or log warning for unsupported DE.
 - Update `sysproxy.Enable` to dispatch to correct implementation.

@@ -28,10 +28,10 @@ func TestFormatKDEProxy(t *testing.T) {
 	}
 }
 
-func TestIsKDESession(t *testing.T) {
+func TestDetectLinuxDesktopEnvironmentKDE(t *testing.T) {
 	t.Setenv("XDG_CURRENT_DESKTOP", "KDE")
 	t.Setenv("DESKTOP_SESSION", "plasma")
-	if !isKDESession() {
-		t.Fatal("expected KDE session detection")
+	if got := DetectLinuxDesktopEnvironment(); got != DesktopKDE {
+		t.Fatalf("expected DesktopKDE, got %q", got)
 	}
 }
