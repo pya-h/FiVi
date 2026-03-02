@@ -3,6 +3,7 @@ package sysproxy
 import (
 	"fmt"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,6 +15,9 @@ import (
 // restore and nil error.
 func Enable(socksHost string, socksPort int, httpHost string, httpPort int) (restore func(), err error) {
 	noop := func() {}
+	if runtime.GOOS == "windows" {
+		return EnableWindows(socksHost, socksPort, httpHost, httpPort)
+	}
 	if isKDESession() {
 		return EnableKDE(socksHost, socksPort, httpHost, httpPort)
 	}

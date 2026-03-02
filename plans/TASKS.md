@@ -315,7 +315,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/sysproxy/darwin.go`, `darwin_test.go`.
 - Done when: macOS proxy is set on connect and restored on disconnect.
 
-53. [ ] `L3` Expand system proxy to Windows.
+53. [x] `L3` Expand system proxy to Windows.
 - Add `internal/sysproxy/windows.go`.
 - Use PowerShell to modify `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`.
 - Set `ProxyServer`, `ProxyOverride`, `ProxyEnable`.

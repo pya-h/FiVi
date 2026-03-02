@@ -266,3 +266,27 @@ After each completed task, append a section to this file:
   - `go build ./...` → pass
 - **Next task or blocker**:
   - Next milestone item is `L2` (macOS system proxy support via `networksetup`).
+
+## Context Update — 2026-03-02 (Milestone L3: Windows system proxy)
+
+- **Task ID and date**: `L3-2026-03-02`
+- **Summary of changes**:
+  - Added Windows system proxy backend that uses PowerShell to manage registry keys under `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`.
+  - Implemented state snapshot (`ProxyEnable`, `ProxyServer`, `ProxyOverride`) before enabling proxy and restore callback to revert settings on disconnect/exit.
+  - Added script builders for set/restore flows, including safe PowerShell string escaping.
+  - Wired `sysproxy.Enable` dispatch so Windows runtime uses the Windows backend first.
+  - Marked `L3` as completed in `plans/TASKS.md`.
+- **Files touched**:
+  - `internal/sysproxy/windows.go`
+  - `internal/sysproxy/windows_test.go`
+  - `internal/sysproxy/gnome.go`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - FiVi now supports automatic Windows system proxy enable/restore in proxy mode.
+  - Linux GNOME/KDE behavior remains available and unchanged on non-Windows systems.
+- **Validation performed**:
+  - `go test ./internal/sysproxy` (targeted via test tool) → pass
+  - `go test ./...` → pass (`180` tests)
+  - `go build ./...` → pass
+- **Next task or blocker**:
+  - `L2` is intentionally skipped per current direction; next practical milestone item is `L4` (Linux desktop environment auto-detection dispatch).
