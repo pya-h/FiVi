@@ -42,6 +42,33 @@ func TestResolveUnknownEngine(t *testing.T) {
 	}
 }
 
+func TestResolveFindsHomeInstalledBinary(t *testing.T) {
+	tmpHome := t.TempDir()
+	arch := mapArch("amd64")
+	binDir := filepath.Join(tmpHome, ".fivi", "bins", "xray", arch)
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binPath := filepath.Join(binDir, "xray")
+	if err := os.WriteFile(binPath, []byte("fake-home"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	origHome := os.Getenv("HOME")
+	t.Cleanup(func() { _ = os.Setenv("HOME", origHome) })
+	if err := os.Setenv("HOME", tmpHome); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Resolve("xray")
+	if err != nil {
+		t.Fatalf("Resolve error: %v", err)
+	}
+	if got != binPath {
+		t.Fatalf("expected %q, got %q", binPath, got)
+	}
+}
+
 func TestMapArch(t *testing.T) {
 	tests := []struct {
 		in   string

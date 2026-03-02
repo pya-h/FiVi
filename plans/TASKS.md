@@ -340,7 +340,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 
 ## Milestone M: Binary Management + Auto-Connect + Daemon
 
-56. [ ] `M1` Add binary auto-download command.
+56. [x] `M1` Add binary auto-download command.
 - Add `./fivi install` subcommand.
 - Detect OS and architecture.
 - Query GitHub releases API for latest xray-core and sing-box versions.
@@ -349,7 +349,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/binmgr/download.go`, `download_test.go`, subcommand in `main.go`.
 - Done when: `./fivi install` downloads and places correct binaries.
 
-57. [ ] `M2` Add binary version check and update.
+57. [x] `M2` Add binary version check and update.
 - Add `./fivi update` subcommand.
 - Compare installed binary version with latest GitHub release.
 - Download and replace if newer version available.

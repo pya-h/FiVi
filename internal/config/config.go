@@ -52,6 +52,7 @@ type AppConfig struct {
 	GeoRuleSets      *routing.GeoRuleSets // resolved at startup by engine
 	NetStats         bool                 // enable real-time network statistics
 	NetStatsIface    string               // override interface for netstats (auto-detect if empty)
+	CheckUpdate      bool                 // check installed engine binaries against latest releases
 	OnlySchemes      map[string]bool
 }
 
@@ -99,6 +100,7 @@ func ParseFlags() AppConfig {
 		geoBypass        = flag.String("geo-bypass", "", "country code for geo-based routing bypass (e.g. ir, cn, ru); downloads .srs rule sets for singbox")
 		netStats         = flag.Bool("stats", false, "enable real-time network statistics in TUI (reads /proc/net/dev)")
 		netStatsIface    = flag.String("stats-iface", "", "network interface for stats (auto-detected if empty)")
+		checkUpdate      = flag.Bool("check-update", false, "check whether engine binaries are outdated on startup")
 		schemesCSV       = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
 	flag.Parse()
@@ -223,6 +225,7 @@ func ParseFlags() AppConfig {
 		GeoBypass:        strings.TrimSpace(strings.ToLower(*geoBypass)),
 		NetStats:         *netStats,
 		NetStatsIface:    strings.TrimSpace(*netStatsIface),
+		CheckUpdate:      *checkUpdate,
 		OnlySchemes:      allowed,
 	}
 }

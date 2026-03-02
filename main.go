@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"fivi/internal/binmgr"
 	"fivi/internal/cleanup"
 	"fivi/internal/config"
 	"fivi/internal/engine"
@@ -36,8 +37,21 @@ func main() {
 		runSpeedTest()
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "install" {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		runInstall()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		runUpdate()
+		return
+	}
 
 	cfg := config.ParseFlags()
+	if cfg.CheckUpdate {
+		runStartupUpdateCheck()
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -107,6 +121,99 @@ func runSpeedTest() {
 		os.Exit(1)
 	}
 	fmt.Print(speedtest.FormatResult(result))
+}
+
+func runInstall() {
+	fs := flag.NewFlagSet("install", flag.ExitOnError)
+	fs.Parse(os.Args[1:])
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	installer, err := binmgr.NewInstaller()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "install failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	results, err := installer.InstallAll(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "install failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, res := range results {
+		fmt.Printf("installed %s %s -> %s\n", res.Engine, res.Version, res.Path)
+	}
+}
+
+func runUpdate() {
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	fs.Parse(os.Args[1:])
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	installer, err := binmgr.NewInstaller()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	statuses, err := installer.UpdateAll(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	hadErr := false
+	for _, st := range statuses {
+		if st.Err != nil {
+			hadErr = true
+			fmt.Printf("%s: error: %v\n", st.Engine, st.Err)
+			continue
+		}
+		switch {
+		case st.Updated:
+			fmt.Printf("%s: updated to %s (%s)\n", st.Engine, st.Latest, st.Path)
+		case st.UpdateAvailable:
+			fmt.Printf("%s: update available %s -> %s\n", st.Engine, st.Installed, st.Latest)
+		default:
+			fmt.Printf("%s: up to date (%s)\n", st.Engine, st.Latest)
+		}
+	}
+	if hadErr {
+		os.Exit(1)
+	}
+}
+
+func runStartupUpdateCheck() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	installer, err := binmgr.NewInstaller()
+	if err != nil {
+		logx.Warnf("update-check: %v", err)
+		return
+	}
+	statuses, err := installer.CheckForUpdates(ctx)
+	if err != nil {
+		logx.Warnf("update-check: %v", err)
+		return
+	}
+	for _, st := range statuses {
+		if st.Err != nil {
+			logx.Warnf("update-check: %s: %v", st.Engine, st.Err)
+			continue
+		}
+		if st.UpdateAvailable {
+			if st.Installed == "" {
+				logx.Warnf("update-check: %s not installed (latest %s); run './fivi install'", st.Engine, st.Latest)
+			} else {
+				logx.Warnf("update-check: %s outdated (%s < %s); run './fivi update'", st.Engine, st.Installed, st.Latest)
+			}
+		}
+	}
 }
 
 func runWithMode(ctx context.Context, cfg config.AppConfig, mode ui.Mode) error {

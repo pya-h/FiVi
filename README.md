@@ -59,7 +59,8 @@ FiVi resolves engine binaries in this order:
 1. CLI flag (`--xray-bin` / `--singbox-bin`)
 2. Environment variable (`FIVI_XRAY_BIN` / `FIVI_SINGBOX_BIN`)
 3. Auto-detect from `bins/{engine}/{GOARCH}/` relative to CWD or executable directory
-4. Bare binary name via system `PATH`
+4. Auto-detect from `~/.fivi/bins/{engine}/{GOARCH}/` (used by `./fivi install`)
+5. Bare binary name via system `PATH`
 
 Architecture is auto-detected via `runtime.GOARCH` (supports `amd64`, `arm64`, others passed through).
 
@@ -113,6 +114,30 @@ FIVI_XRAY_BIN=/usr/local/bin/xray ./fivi
 
 # Or via flags
 ./fivi --engine singbox --singbox-bin /opt/sing-box/sing-box
+```
+
+### Install Engine Binaries Automatically
+
+```bash
+# Download latest xray-core and sing-box for current OS/arch
+./fivi install
+```
+
+`install` downloads release assets from GitHub, verifies SHA256 checksums, extracts binaries, and installs them to:
+
+```text
+~/.fivi/bins/xray/<arch>/xray
+~/.fivi/bins/singbox/<arch>/sing-box
+```
+
+### Update Engine Binaries
+
+```bash
+# Check installed versions and update outdated binaries
+./fivi update
+
+# Check for available updates on startup (warning only)
+./fivi --check-update
 ```
 
 Once connected, FiVi exposes:
@@ -628,6 +653,7 @@ FiVi/
 | `--speed-bytes` | `int64` | `524288` (512KB) | Max bytes to download for speed sampling |
 | `--retry-backoff` | `duration` | `14s` (iran) / `8s` (global) | Backoff before restarting discovery |
 | `--schemes` | `CSV` | `vmess,vless,trojan,ss` | Allowed URI schemes to accept |
+| `--check-update` | `bool` | `false` | Check if installed engine binaries are outdated on startup |
 
 **Environment variables:**
 

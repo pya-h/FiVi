@@ -19,7 +19,8 @@ var binaryName = map[string]string{
 //
 //  1. bins/{engine}/{GOARCH}/{binary}   relative to CWD
 //  2. bins/{engine}/{GOARCH}/{binary}   next to the running executable
-//  3. Falls back to the binary name alone (PATH lookup by exec.LookPath later)
+//  3. ~/.fivi/bins/{engine}/{GOARCH}/{binary}
+//  4. Falls back to the binary name alone (PATH lookup by exec.LookPath later)
 func Resolve(engine string) (string, error) {
 	engine = strings.ToLower(strings.TrimSpace(engine))
 	bin, ok := binaryName[engine]
@@ -39,6 +40,14 @@ func Resolve(engine string) (string, error) {
 	// Probe 2: relative to the running executable.
 	if exe, err := os.Executable(); err == nil {
 		candidate := filepath.Join(filepath.Dir(exe), "bins", engine, arch, bin)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	// Probe 3: default install location.
+	if home, err := os.UserHomeDir(); err == nil {
+		candidate := filepath.Join(home, ".fivi", "bins", engine, arch, bin)
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate, nil
 		}

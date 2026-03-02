@@ -1,5 +1,10 @@
 # FiVi Session Context (Distilled)
 
+## Sync Stamp
+- **Synced on**: 2026-03-02
+- **Scope synced**: includes all completed work through milestone `L5` plus post-L debug fix for share-mode system-proxy host selection.
+- **Repository state expectation**: `staging` branch, `L2` intentionally skipped, continuation starts at `M1`.
+
 ## 1) Project Snapshot
 - **Project**: `FiVi` (Go CLI) for anti-censorship proxy discovery, validation, ranking, connect/monitor/failover.
 - **Branch**: `staging` (default: `main`)
@@ -81,6 +86,18 @@
 - Full test suite passes: `go test ./...`.
 - Build passes: `go build ./...`.
 
+## 7.1) Latest Reliability Patch (Post-L)
+- **Area**: `--share` + system proxy host resolution.
+- **Problem fixed**: potential selection of unstable virtual/container interface IPs for system proxy address.
+- **Current behavior**:
+  - Prefer primary outbound IPv4.
+  - Prefer private LAN IPv4.
+  - Exclude likely virtual interfaces during LAN IP enumeration.
+  - Fallback to loopback if no safe LAN IP is available.
+- **Files**:
+  - `internal/engine/engine.go`
+  - `internal/engine/share_test.go`
+
 ## 8) Key Flags/UX That Matter for Ops
 - `--mode proxy|tunnel`
 - `--engine xray|singbox`
@@ -100,9 +117,57 @@
    - `go test ./...`
    - `go build ./...`
 2. Start **M1** (`./fivi install` + binary download/verify flow).
+  - Expected outputs: `internal/binmgr/download.go`, `internal/binmgr/download_test.go`, and subcommand wiring in `main.go`.
+  - Required checks: OS/arch detection, release lookup, archive extraction, checksum verification, target install path.
 3. Keep changes scoped to milestone requirements (no extra feature drift).
 4. After each completed task, append short context update here with:
    - changed files
    - behavior impact
    - validation results
    - next task
+
+## 11) Milestone M1 Update (2026-03-02)
+- **What changed**:
+  - Implemented binary auto-download/install flow via new `./fivi install` subcommand.
+  - Installer now fetches latest GitHub release metadata for `xray-core` and `sing-box`, selects OS/arch-matching archive assets, downloads checksum assets, verifies SHA256, extracts the engine binary, and installs to `~/.fivi/bins/<engine>/<arch>/`.
+  - Binary resolver now probes `~/.fivi/bins/<engine>/<arch>/` before PATH fallback so installed binaries are auto-picked by normal runtime flag parsing.
+- **Files touched**:
+  - `main.go`
+  - `internal/binmgr/download.go`
+  - `internal/binmgr/download_test.go`
+  - `internal/binresolver/resolver.go`
+  - `internal/binresolver/resolver_test.go`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Users can bootstrap both engines using `./fivi install` without manual placement into repository `bins/`.
+  - Standard startup path resolution now supports persisted installed binaries under user home (`~/.fivi/bins/...`).
+- **Validation results**:
+  - Targeted tests pass:
+    - `go test ./internal/binmgr ./internal/binresolver`
+  - Full suite pass:
+    - `go test ./...`
+- **Next task**:
+  - `M2` Add binary version check/update flow (`./fivi update` + outdated binary warning path).
+
+## 12) Milestone M2 Update (2026-03-02)
+- **What changed**:
+  - Implemented binary version check/update flow and added `./fivi update` subcommand.
+  - Added startup `--check-update` flag to compare installed engine binaries with latest release versions and emit warning logs when outdated or missing.
+  - Added update logic that resolves installed binaries, extracts installed version via `<bin> version`, compares semantic version parts, and installs latest versions when update is required.
+- **Files touched**:
+  - `internal/binmgr/update.go`
+  - `internal/binmgr/update_test.go`
+  - `main.go`
+  - `internal/config/config.go`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - `./fivi update` now updates `xray` and `singbox` binaries to latest available release versions when older versions are installed.
+  - `./fivi --check-update` now warns at startup if engine binaries are outdated/missing, without failing normal connection flow.
+- **Validation results**:
+  - Targeted tests pass:
+    - `go test ./internal/binmgr ./internal/config`
+  - Full suite and build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task**:
+  - `M3` Add session persistence for fast reconnect.
