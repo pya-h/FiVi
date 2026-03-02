@@ -330,7 +330,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/sysproxy/detect.go`, `detect_test.go`.
 - Done when: system proxy works on both GNOME and KDE without user intervention.
 
-55. [ ] `L5` Add LAN sharing mode.
+55. [x] `L5` Add LAN sharing mode.
 - Add `--share` flag to bind proxy to `0.0.0.0` instead of `127.0.0.1`.
 - Print local IP addresses and port on start for easy sharing.
 - When combined with system proxy, use actual local IP (not 0.0.0.0).

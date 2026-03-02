@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -648,15 +649,21 @@ func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked
 	// In proxy mode, configure system proxy so browsers use the connection.
 	var restoreProxy func()
 	if !cfg.IsTunnelMode() {
-		socksHost, socksPort := splitHostPort(cfg.ListenSocksAddr)
-		httpHost, httpPort := splitHostPort(cfg.ListenHTTPAddr)
+		sysSocksAddr := cfg.ListenSocksAddr
+		sysHTTPAddr := cfg.ListenHTTPAddr
+		if cfg.ShareMode {
+			sysSocksAddr = resolveSystemProxyAddr(cfg.ListenSocksAddr)
+			sysHTTPAddr = resolveSystemProxyAddr(cfg.ListenHTTPAddr)
+		}
+		socksHost, socksPort := splitHostPort(sysSocksAddr)
+		httpHost, httpPort := splitHostPort(sysHTTPAddr)
 		restore, proxyErr := enableSystemProxyFn(socksHost, socksPort, httpHost, httpPort)
 		if proxyErr != nil {
 			logx.Warnf("system proxy setup failed: %v (browsers need manual proxy config)", proxyErr)
 		} else {
 			restoreProxy = restore
 			registerCleanup("restore system proxy", restore)
-			logx.Infof("system proxy configured (socks=%s, http=%s)", cfg.ListenSocksAddr, cfg.ListenHTTPAddr)
+			logx.Infof("system proxy configured (socks=%s, http=%s)", sysSocksAddr, sysHTTPAddr)
 		}
 	}
 
@@ -672,6 +679,10 @@ func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked
 			registerCleanup("stop PAC server", srv.Stop)
 			logx.Infof("PAC script available at %s", srv.URL())
 		}
+	}
+
+	if cfg.ShareMode && !cfg.IsTunnelMode() {
+		printLANShareInfo(cfg.ListenSocksAddr, cfg.ListenHTTPAddr)
 	}
 
 	printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, inst.PID(), connectedAt, initialProbe, initialSpeed, 0)
@@ -873,6 +884,156 @@ func reserveAddr() (string, error) {
 	addr := ln.Addr().String()
 	_ = ln.Close()
 	return addr, nil
+}
+
+func resolveSystemProxyAddr(listenAddr string) string {
+	host, port := splitHostPort(listenAddr)
+	if !isWildcardHost(host) {
+		return listenAddr
+	}
+	resolvedHost := resolveHostForSystemProxy(localLANIPs())
+	if resolvedHost == "" {
+		resolvedHost = "127.0.0.1"
+	}
+	return net.JoinHostPort(resolvedHost, strconv.Itoa(port))
+}
+
+func isWildcardHost(host string) bool {
+	host = strings.TrimSpace(host)
+	return host == "" || host == "0.0.0.0" || host == "::"
+}
+
+func resolveHostForSystemProxy(lanIPs []string) string {
+	return resolveHostForSystemProxyWithPreferred(lanIPs, primaryOutboundIPv4())
+}
+
+func resolveHostForSystemProxyWithPreferred(lanIPs []string, preferred string) string {
+	if parsed := net.ParseIP(strings.TrimSpace(preferred)); parsed != nil {
+		if v4 := parsed.To4(); v4 != nil && !parsed.IsLoopback() && !parsed.IsUnspecified() {
+			return v4.String()
+		}
+	}
+
+	for _, ip := range lanIPs {
+		parsed := net.ParseIP(strings.TrimSpace(ip))
+		if parsed == nil || parsed.IsLoopback() || parsed.IsUnspecified() {
+			continue
+		}
+		if v4 := parsed.To4(); v4 != nil {
+			if isPrivateIPv4(v4) {
+				return v4.String()
+			}
+		}
+	}
+
+	for _, ip := range lanIPs {
+		if parsed := net.ParseIP(strings.TrimSpace(ip)); parsed != nil {
+			if parsed.IsLoopback() || parsed.IsUnspecified() {
+				continue
+			}
+			if v4 := parsed.To4(); v4 != nil {
+				return v4.String()
+			}
+		}
+	}
+	return ""
+}
+
+func primaryOutboundIPv4() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok || udpAddr == nil || udpAddr.IP == nil {
+		return ""
+	}
+	if v4 := udpAddr.IP.To4(); v4 != nil {
+		return v4.String()
+	}
+	return ""
+}
+
+func isPrivateIPv4(ip net.IP) bool {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+	if ip4[0] == 10 {
+		return true
+	}
+	if ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31 {
+		return true
+	}
+	if ip4[0] == 192 && ip4[1] == 168 {
+		return true
+	}
+	return false
+}
+
+func localLANIPs() []string {
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, 8)
+	for _, iface := range ifs {
+		if isLikelyVirtualInterface(iface.Name) {
+			continue
+		}
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsUnspecified() {
+				continue
+			}
+			if v4 := ip.To4(); v4 != nil {
+				out = append(out, v4.String())
+			}
+		}
+	}
+	return out
+}
+
+func isLikelyVirtualInterface(name string) bool {
+	l := strings.ToLower(strings.TrimSpace(name))
+	if l == "" {
+		return false
+	}
+	virtualPrefixes := []string{"docker", "br-", "veth", "virbr", "vmnet", "zt", "tailscale", "tun", "wg"}
+	for _, p := range virtualPrefixes {
+		if strings.HasPrefix(l, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func printLANShareInfo(socksAddr, httpAddr string) {
+	_, socksPort := splitHostPort(socksAddr)
+	_, httpPort := splitHostPort(httpAddr)
+	ips := localLANIPs()
+	logx.Warnf("LAN sharing is enabled: proxy listeners are exposed to your local network")
+	if len(ips) == 0 {
+		logx.Warnf("could not detect LAN IPs automatically; find your local IP and use ports socks=%d http=%d", socksPort, httpPort)
+		return
+	}
+	for _, ip := range ips {
+		logx.Infof("LAN share endpoint: socks5://%s | http://%s", net.JoinHostPort(ip, strconv.Itoa(socksPort)), net.JoinHostPort(ip, strconv.Itoa(httpPort)))
+	}
 }
 
 func hasRequiredTargetsOK(results []probe.TargetResult, requiredTokens []string) bool {

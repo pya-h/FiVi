@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"runtime"
 	"strings"
@@ -23,6 +24,7 @@ type AppConfig struct {
 	SingboxBin       string
 	ListenSocksAddr  string
 	ListenHTTPAddr   string
+	ShareMode        bool
 	NoTUI            bool
 	Workers          int
 	MaxCandidates    int
@@ -69,6 +71,7 @@ func ParseFlags() AppConfig {
 		singboxBin       = flag.String("singbox-bin", "", "override path to sing-box binary (auto-resolved from bins/ by default)")
 		socksAddr        = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
 		httpAddr         = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
+		shareMode        = flag.Bool("share", false, "bind proxy listeners to 0.0.0.0 for LAN sharing (proxy mode)")
 		noTUI            = flag.Bool("no-tui", false, "disable TUI mode even in interactive terminals")
 		workers          = flag.Int("workers", defaultWorkers(), "parallel workers for candidate testing")
 		maxCandidates    = flag.Int("max-candidates", 0, "max unique candidates to test per round (0 = no limit)")
@@ -180,6 +183,11 @@ func ParseFlags() AppConfig {
 		allowed[strings.ToLower(s)] = true
 	}
 
+	if *shareMode {
+		*socksAddr = sharedListenAddr(*socksAddr)
+		*httpAddr = sharedListenAddr(*httpAddr)
+	}
+
 	return AppConfig{
 		Profile:          selectedProfile.Name,
 		Engine:           engineName,
@@ -188,6 +196,7 @@ func ParseFlags() AppConfig {
 		SingboxBin:       singboxBinPath,
 		ListenSocksAddr:  *socksAddr,
 		ListenHTTPAddr:   *httpAddr,
+		ShareMode:        *shareMode,
 		NoTUI:            *noTUI,
 		Workers:          *workers,
 		MaxCandidates:    *maxCandidates,
@@ -264,6 +273,14 @@ func splitCSV(v string) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+func sharedListenAddr(addr string) string {
+	_, port, err := net.SplitHostPort(strings.TrimSpace(addr))
+	if err != nil {
+		return addr
+	}
+	return net.JoinHostPort("0.0.0.0", port)
 }
 
 func normalizeEngine(v string) string {

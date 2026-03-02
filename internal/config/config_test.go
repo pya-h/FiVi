@@ -79,3 +79,12 @@ func TestResolveBinaryExplicitFlag(t *testing.T) {
 		t.Fatalf("resolveBinary() explicit flag failed, got=%q", got)
 	}
 }
+
+func TestSharedListenAddr(t *testing.T) {
+	if got := sharedListenAddr("127.0.0.1:10808"); got != "0.0.0.0:10808" {
+		t.Fatalf("sharedListenAddr()=%q", got)
+	}
+	if got := sharedListenAddr("bad-addr"); got != "bad-addr" {
+		t.Fatalf("sharedListenAddr() should keep invalid addr, got=%q", got)
+	}
+}
