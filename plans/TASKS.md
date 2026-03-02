@@ -299,7 +299,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 
 ## Milestone L: Cross-Platform Proxy + LAN Sharing
 
-51. [ ] `L1` Expand system proxy to KDE.
+51. [x] `L1` Expand system proxy to KDE.
 - Add `internal/sysproxy/kde.go`.
 - Use `kwriteconfig5` or `kwriteconfig6` (auto-detect Plasma version).
 - Write to `kioslaverc [Proxy Settings]`: ProxyType, socksProxy, NoProxyFor.

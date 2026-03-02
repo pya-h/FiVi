@@ -242,3 +242,27 @@ After each completed task, append a section to this file:
     - Both binaries are executable Linux `ELF 64-bit`.
 - **Next task or blocker**:
   - Next planned implementation remains Milestone L (`L1` KDE proxy support).
+
+## Context Update — 2026-03-02 (Milestone L1: KDE system proxy)
+
+- **Task ID and date**: `L1-2026-03-02`
+- **Summary of changes**:
+  - Added KDE system proxy backend using `kwriteconfig6/kwriteconfig5` targeting `~/.config/kioslaverc` `[Proxy Settings]` keys.
+  - Added safe restore behavior: previous `kioslaverc` content is restored on disconnect/exit (or removed if it did not exist before).
+  - Updated `sysproxy.Enable` to prefer KDE backend on KDE/Plasma sessions and to fall back to KDE backend when GNOME `gsettings` is unavailable.
+  - Added unit tests for KDE command generation, proxy formatting, and KDE session detection.
+  - Marked `L1` as completed in `plans/TASKS.md`.
+- **Files touched**:
+  - `internal/sysproxy/kde.go`
+  - `internal/sysproxy/kde_test.go`
+  - `internal/sysproxy/gnome.go`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - FiVi can now configure system proxy on KDE Plasma environments and restore prior settings on teardown.
+  - Existing GNOME proxy behavior remains unchanged for GNOME sessions.
+- **Validation performed**:
+  - `go test ./internal/sysproxy` (targeted via test tool) → pass
+  - `go test ./...` → pass (`177` tests)
+  - `go build ./...` → pass
+- **Next task or blocker**:
+  - Next milestone item is `L2` (macOS system proxy support via `networksetup`).

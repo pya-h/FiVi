@@ -14,9 +14,12 @@ import (
 // restore and nil error.
 func Enable(socksHost string, socksPort int, httpHost string, httpPort int) (restore func(), err error) {
 	noop := func() {}
+	if isKDESession() {
+		return EnableKDE(socksHost, socksPort, httpHost, httpPort)
+	}
 
 	if _, err := exec.LookPath("gsettings"); err != nil {
-		return noop, nil
+		return EnableKDE(socksHost, socksPort, httpHost, httpPort)
 	}
 
 	// Save current state.
