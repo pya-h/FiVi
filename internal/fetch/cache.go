@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	defaultCacheDir = ".fivi/cache/sources"
+	defaultCacheDir = ".cache/sources"
 	cacheTTL        = 6 * time.Hour
 )
 
@@ -24,12 +24,7 @@ type cacheEntry struct {
 func cacheDir() string {
 	dir := os.Getenv("FIVI_CACHE_DIR")
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err == nil && home != "" {
-			dir = filepath.Join(home, defaultCacheDir)
-		} else {
-			dir = filepath.Join(".", defaultCacheDir)
-		}
+		dir = filepath.Join(".", defaultCacheDir)
 	}
 	_ = os.MkdirAll(dir, 0o755)
 	return dir

@@ -233,12 +233,22 @@ func runStartupUpdateCheck() {
 }
 
 func runDaemon(args []string) {
-	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
-	runChild := fs.Bool("run-child", false, "internal flag: run daemon child process")
-	fs.Parse(args)
-	appArgs := fs.Args()
+	runChild := false
+	appArgs := make([]string, 0, len(args))
+	for _, arg := range args {
+		switch arg {
+		case "--run-child":
+			runChild = true
+		case "-h", "--help":
+			fmt.Println("usage: ./fivi daemon [fivi flags]")
+			fmt.Println("starts FiVi in background mode; all normal flags are forwarded")
+			return
+		default:
+			appArgs = append(appArgs, arg)
+		}
+	}
 
-	if *runChild {
+	if runChild {
 		runDaemonChild(appArgs)
 		return
 	}

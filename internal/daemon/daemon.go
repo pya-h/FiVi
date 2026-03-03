@@ -125,3 +125,13 @@ func ProcessRunning(pid int) bool {
 	}
 	return true
 }
+
+// ProcessLooksLikeFiViDaemon returns true when the process likely belongs to
+// FiVi daemon mode. On platforms where process command line introspection is
+// unavailable, this falls back to true.
+func ProcessLooksLikeFiViDaemon(pid int) bool {
+	if !ProcessRunning(pid) {
+		return false
+	}
+	return processLooksLikeFiViDaemon(pid)
+}
