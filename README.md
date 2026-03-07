@@ -50,14 +50,15 @@ Sources (30+ URLs)
 - **Engine binary** — at least one of:
   - [Xray-core](https://github.com/XTLS/Xray-core) — supports proxy mode only
   - [sing-box](https://github.com/SagerNet/sing-box) — supports both proxy and tunnel (TUN) modes
+      - [Hysteria2](https://github.com/apernet/hysteria) — currently supported in proxy mode
 - **Root/sudo** — required only for tunnel mode (TUN device creation)
 
 ### Engine Binary Resolution
 
 FiVi resolves engine binaries in this order:
 
-1. CLI flag (`--xray-bin` / `--singbox-bin`)
-2. Environment variable (`FIVI_XRAY_BIN` / `FIVI_SINGBOX_BIN`)
+1. CLI flag (`--xray-bin` / `--singbox-bin` / `--hysteria2-bin`)
+2. Environment variable (`FIVI_XRAY_BIN` / `FIVI_SINGBOX_BIN` / `FIVI_HYSTERIA2_BIN`)
 3. Auto-detect from `bins/{engine}/{GOARCH}/` relative to CWD or executable directory
 4. Auto-detect from `~/.fivi/bins/{engine}/{GOARCH}/` (used by `./fivi install`)
 5. Bare binary name via system `PATH`
@@ -114,6 +115,9 @@ FIVI_XRAY_BIN=/usr/local/bin/xray ./fivi
 
 # Or via flags
 ./fivi --engine singbox --singbox-bin /opt/sing-box/sing-box
+
+# Hysteria2 (proxy mode)
+./fivi --engine hysteria2 --hysteria2-bin /usr/local/bin/hysteria
 ```
 
 ### Install Engine Binaries Automatically
@@ -454,6 +458,7 @@ Once connected, FiVi continuously monitors the active node:
 # Select engine backend
 --engine xray          # Default. Uses Xray-core
 --engine singbox       # Uses sing-box
+--engine hysteria2     # Uses hysteria2 (proxy mode)
 
 # Select operational profile
 --profile iran         # Default. Tuned for restricted networks
@@ -470,10 +475,12 @@ Once connected, FiVi continuously monitors the active node:
 # Override engine binary locations
 --xray-bin /path/to/xray
 --singbox-bin /path/to/sing-box
+--hysteria2-bin /path/to/hysteria
 
 # Or via environment variables
 FIVI_XRAY_BIN=/path/to/xray
 FIVI_SINGBOX_BIN=/path/to/sing-box
+FIVI_HYSTERIA2_BIN=/path/to/hysteria
 ```
 
 ### Network Addresses

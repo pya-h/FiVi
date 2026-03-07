@@ -390,7 +390,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Keep profile-required targets pinned while adapting optional targets.
 - Done when: average time-to-first-working-node improves without reducing required-target strictness.
 
-62. [ ] `N3` Engine expansion feasibility: `hysteria2` adapter.
+62. [x] `N3` Engine expansion feasibility: `hysteria2` adapter.
 - Evaluate and optionally implement `--engine hysteria2` under existing adapter abstraction.
 - Support proxy mode first; tunnel optional if low complexity.
 - Done when: discovery/connect/monitor works with hysteria2 or feasibility is explicitly documented as deferred.

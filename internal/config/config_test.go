@@ -27,6 +27,9 @@ func TestNormalizeEngine(t *testing.T) {
 		{in: "XRAY", want: "xray"},
 		{in: "sing-box", want: "singbox"},
 		{in: "singbox", want: "singbox"},
+		{in: "hysteria2", want: "hysteria2"},
+		{in: "hy2", want: "hysteria2"},
+		{in: "hysteria-2", want: "hysteria2"},
 	}
 
 	for _, tc := range tests {

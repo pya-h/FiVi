@@ -23,6 +23,7 @@ type AppConfig struct {
 	Mode                     string // "proxy" or "tunnel"
 	XRAYBin                  string
 	SingboxBin               string
+	Hysteria2Bin             string
 	ListenSocksAddr          string
 	ListenHTTPAddr           string
 	ShareMode                bool
@@ -69,10 +70,11 @@ func ParseFlags() AppConfig {
 
 	var (
 		profileName       = flag.String("profile", "iran", "operational profile name")
-		engine            = flag.String("engine", "xray", "engine backend: xray|singbox")
+		engine            = flag.String("engine", "xray", "engine backend: xray|singbox|hysteria2")
 		mode              = flag.String("mode", "proxy", "connection mode: proxy|tunnel (tunnel uses TUN interface, may require root/capabilities)")
 		xrayBin           = flag.String("xray-bin", "", "override path to xray binary (auto-resolved from bins/ by default)")
 		singboxBin        = flag.String("singbox-bin", "", "override path to sing-box binary (auto-resolved from bins/ by default)")
+		hysteria2Bin      = flag.String("hysteria2-bin", "", "override path to hysteria2 binary (auto-resolved from bins/ by default)")
 		socksAddr         = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
 		httpAddr          = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
 		shareMode         = flag.Bool("share", false, "bind proxy listeners to 0.0.0.0 for LAN sharing (proxy mode)")
@@ -145,6 +147,7 @@ func ParseFlags() AppConfig {
 	// Resolve binary paths: explicit flag > env var > auto-detect from bins/.
 	xrayBinPath := resolveBinary("xray", *xrayBin, "FIVI_XRAY_BIN", visited["xray-bin"])
 	singboxBinPath := resolveBinary("singbox", *singboxBin, "FIVI_SINGBOX_BIN", visited["singbox-bin"])
+	hysteria2BinPath := resolveBinary("hysteria2", *hysteria2Bin, "FIVI_HYSTERIA2_BIN", visited["hysteria2-bin"])
 
 	switch engineName {
 	case "xray":
@@ -155,8 +158,12 @@ func ParseFlags() AppConfig {
 		if strings.TrimSpace(singboxBinPath) == "" {
 			failFlag("could not locate sing-box binary; install sing-box and use --singbox-bin /path/to/sing-box or place it in bins/singbox/%s/", runtime.GOARCH)
 		}
+	case "hysteria2":
+		if strings.TrimSpace(hysteria2BinPath) == "" {
+			failFlag("could not locate hysteria2 binary; install hysteria2 and use --hysteria2-bin /path/to/hysteria2 or set FIVI_HYSTERIA2_BIN")
+		}
 	default:
-		failFlag("invalid --engine=%q (supported: xray, singbox)", *engine)
+		failFlag("invalid --engine=%q (supported: xray, singbox, hysteria2)", *engine)
 	}
 
 	// Load routing rules: file > inline CSV > profile defaults.
@@ -213,6 +220,7 @@ func ParseFlags() AppConfig {
 		Mode:                     modeName,
 		XRAYBin:                  xrayBinPath,
 		SingboxBin:               singboxBinPath,
+		Hysteria2Bin:             hysteria2BinPath,
 		ListenSocksAddr:          *socksAddr,
 		ListenHTTPAddr:           *httpAddr,
 		ShareMode:                *shareMode,
@@ -348,6 +356,9 @@ func normalizeEngine(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))
 	if v == "sing-box" {
 		return "singbox"
+	}
+	if v == "hy2" || v == "hysteria-2" {
+		return "hysteria2"
 	}
 	return v
 }

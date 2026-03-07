@@ -342,3 +342,57 @@
     - `go build ./...`
 - **Next task**:
   - `N3` Engine expansion feasibility (`hysteria2` adapter).
+
+## 20) Session Distillate / Next-Session Bootstrap (2026-03-07)
+- **Stable baseline now**:
+  - Milestones `A–K`, `L1/L3/L4/L5`, `M1–M4`, request patchset (`R1–R4`), and backlog `N1/N2` are complete and validated.
+  - `L2` (macOS sysproxy) remains intentionally skipped by product direction.
+- **Last completed implementation**:
+  - `N2` adaptive probe target strategy is in place (rolling target quality + adaptive ordering), with required targets pinned first.
+  - Commit created for this step: `feat: adaptive probe target strategy`.
+- **Behavioral invariants to preserve**:
+  - Tunnel-mode candidate validation must remain tunnel-aware (no proxy-forced build path).
+  - Probable fallback path should run before full rediscovery when working set is empty.
+  - Daemon lifecycle safety checks (PID identity, stale PID cleanup, heartbeat/metadata) must stay intact.
+  - Required profile targets must stay pinned even when adaptive target ordering runs.
+- **Recommended first actions next session**:
+  1. Re-run baseline verification: `go test ./... && go build ./...`.
+  2. Start `N3`: evaluate/implement `hysteria2` adapter feasibility (proxy-mode first), scoped to existing adapter contracts.
+  3. If `N3` lands, update `plans/TASKS.md` + append a new section in this file with files changed, behavior impact, and validation.
+- **Primary files to inspect first for continuation**:
+  - `internal/engines/adapter.go`
+  - `internal/engines/xray.go`
+  - `internal/engines/singbox.go`
+  - `internal/engine/engine.go`
+  - `plans/TASKS.md`
+
+## 21) N3 Engine Expansion: Hysteria2 Adapter (2026-03-07)
+- **What changed**:
+  - Added new `hysteria2` engine adapter under existing adapter abstraction.
+  - Implemented `hysteria2`/`hy2` URI parsing and runtime config generation for proxy mode.
+  - Added process wrapper lifecycle for hysteria2 (`EnsureBinary`, `Start`, `Stop`) using client config file execution.
+  - Wired engine selection and binary resolution:
+    - `--engine hysteria2`
+    - `--hysteria2-bin`
+    - `FIVI_HYSTERIA2_BIN`
+  - Added engine-alias normalization support (`hy2`, `hysteria-2` -> `hysteria2`).
+- **Files touched**:
+  - `internal/engines/hysteria2.go`
+  - `internal/engines/hysteria2_test.go`
+  - `internal/engine/engine.go`
+  - `internal/engine/adapter_select_test.go`
+  - `internal/config/config.go`
+  - `internal/config/config_test.go`
+  - `README.md`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - FiVi now supports `hysteria2` in proxy mode through the same discovery/connect/monitor pipeline.
+  - Tunnel mode for hysteria2 is intentionally not enabled yet (adapter returns explicit proxy-mode-only error).
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/engines ./internal/engine ./internal/config`
+  - Full suite/build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task**:
+  - `N4` Additional mode: `urltest` continuous benchmarking mode.

@@ -1641,8 +1641,10 @@ func adapterFromConfig(cfg config.AppConfig) (engines.Adapter, error) {
 		return engines.NewXrayAdapter(), nil
 	case "singbox", "sing-box":
 		return engines.NewSingboxAdapter(), nil
+	case "hysteria2", "hy2", "hysteria-2":
+		return engines.NewHysteria2Adapter(), nil
 	default:
-		return nil, fmt.Errorf("unsupported engine %q (supported: xray, singbox)", cfg.Engine)
+		return nil, fmt.Errorf("unsupported engine %q (supported: xray, singbox, hysteria2)", cfg.Engine)
 	}
 }
 
@@ -1654,6 +1656,8 @@ func binaryForAdapter(cfg config.AppConfig, adapter engines.Adapter) string {
 	switch name {
 	case "singbox", "sing-box":
 		return cfg.SingboxBin
+	case "hysteria2", "hy2", "hysteria-2":
+		return cfg.Hysteria2Bin
 	default:
 		return cfg.XRAYBin
 	}

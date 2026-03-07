@@ -17,6 +17,8 @@ func TestAdapterFromConfig(t *testing.T) {
 		{name: "xray", engine: "xray", wantName: "xray"},
 		{name: "singbox", engine: "singbox", wantName: "singbox"},
 		{name: "sing-box alias", engine: "sing-box", wantName: "singbox"},
+		{name: "hysteria2", engine: "hysteria2", wantName: "hysteria2"},
+		{name: "hy2 alias", engine: "hy2", wantName: "hysteria2"},
 		{name: "invalid", engine: "unknown", wantError: true},
 	}
 
@@ -41,13 +43,17 @@ func TestAdapterFromConfig(t *testing.T) {
 
 func TestBinaryForAdapter(t *testing.T) {
 	cfg := config.AppConfig{
-		XRAYBin:    "/usr/bin/xray",
-		SingboxBin: "/usr/bin/sing-box",
+		XRAYBin:      "/usr/bin/xray",
+		SingboxBin:   "/usr/bin/sing-box",
+		Hysteria2Bin: "/usr/bin/hysteria2",
 	}
 	if got := binaryForAdapter(cfg, engines.NewXrayAdapter()); got != "/usr/bin/xray" {
 		t.Fatalf("xray bin mismatch: %q", got)
 	}
 	if got := binaryForAdapter(cfg, engines.NewSingboxAdapter()); got != "/usr/bin/sing-box" {
 		t.Fatalf("singbox bin mismatch: %q", got)
+	}
+	if got := binaryForAdapter(cfg, engines.NewHysteria2Adapter()); got != "/usr/bin/hysteria2" {
+		t.Fatalf("hysteria2 bin mismatch: %q", got)
 	}
 }
