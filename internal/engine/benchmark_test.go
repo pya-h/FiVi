@@ -93,7 +93,7 @@ func BenchmarkValidateCandidatesThroughput(b *testing.B) {
 	b.Cleanup(restoreLogs)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		summary := validateCandidates(ctx, cfg, cands, nil, adapter, "bench-bin")
+		summary := validateCandidates(ctx, cfg, cands, nil, adapter, "bench-bin", nil)
 		if len(summary.Working) == 0 {
 			b.Fatalf("expected working candidates")
 		}

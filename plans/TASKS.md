@@ -420,3 +420,25 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Add pinned-version channel support (`stable`, `latest`) and optional allowlist for release tags.
 - Persist last known good binary version and rollback on repeated startup failures.
 - Done when: binary update failures can be auto-mitigated without manual reinstall.
+
+## Request Patchset (2026-03-07)
+
+68. [x] `R1` Align candidate validation with selected mode.
+- Ensure candidate test builds runtime config with tunnel mode when `--mode tunnel` is selected.
+- Prevent proxy-only qualification from incorrectly rejecting tunnel-capable configs.
+- Done when: tunnel-mode validation path uses `TunnelMode=true` in candidate test build.
+
+69. [x] `R2` Add single-config inputs merged with subscriptions.
+- Add `--config` (CSV URIs) and `--config-file` (one URI per line) to include direct configs.
+- Merge direct configs with fetched source configs before normalize/dedupe.
+- Done when: `--sources` and direct config inputs work together in one candidate pool.
+
+70. [x] `R3` Probable plan-B fallback and good-latency promotion.
+- Promote probe-failed candidates with known good latency to probable bucket.
+- If no working candidates are found, attempt probable candidates as plan-B before rediscovery.
+- Done when: probable fallback path is active and written artifacts include promoted probable entries.
+
+71. [x] `R4` Make latency-based probable promotion configurable.
+- Add `--probable-latency-threshold` to control which low-latency probe-failed candidates are promoted to probable.
+- Default threshold: `450ms`; `0` disables this promotion path.
+- Done when: users can tune/disable latency-based probable promotion without code changes.

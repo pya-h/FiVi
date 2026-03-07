@@ -79,6 +79,11 @@ type validationSummary struct {
 	Failed        int
 }
 
+type discoveryResult struct {
+	Working  []Ranked
+	Probable []ProbableCandidate
+}
+
 var (
 	checkThroughSOCKSFn = probe.CheckThroughSOCKS
 	measureDownloadFn   = probe.MeasureDownloadSpeedMbps
@@ -202,14 +207,25 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 		}
 
 		emitStatus(status, StatusUpdate{Phase: PhaseDiscovering})
-		ranked, err := discoverAndRank(ctx, cfg, health, events, status, adapter, engineBin)
+		discovered, err := discoverAndRank(ctx, cfg, health, events, status, adapter, engineBin)
 		if err != nil {
 			logx.Errorf("discovery failed: %v", err)
 			sleepWithCancel(ctx, cfg.RetryBackoff)
 			continue
 		}
+		ranked := discovered.Working
 		if len(ranked) == 0 {
-			logx.Warnf("no working nodes found, retrying in %s", cfg.RetryBackoff)
+			if len(discovered.Probable) > 0 {
+				fallback := rankedFromProbable(discovered.Probable)
+				logx.Warnf("no working nodes found; trying %d probable candidates as plan-B", len(fallback))
+				if err := connectAndMonitor(ctx, cfg, fallback, status, adapter, engineBin); err == nil || errors.Is(err, context.Canceled) {
+					return err
+				}
+				logx.Warnf("probable plan-B candidates failed; retrying discovery in %s", cfg.RetryBackoff)
+				sleepWithCancel(ctx, cfg.RetryBackoff)
+				continue
+			}
+			logx.Warnf("no working/probable nodes found, retrying in %s", cfg.RetryBackoff)
 			sleepWithCancel(ctx, cfg.RetryBackoff)
 			continue
 		}
@@ -246,7 +262,7 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 	}
 }
 
-func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker, events chan<- WorkerEvent, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) ([]Ranked, error) {
+func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.HealthTracker, events chan<- WorkerEvent, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) (discoveryResult, error) {
 	roundSources := selectSourcesForRound(cfg.BootstrapSources, health, time.Now())
 	logx.Infof("fetching subscriptions from %d/%d sources", len(roundSources), len(cfg.BootstrapSources))
 	attemptedSources := make(map[string]struct{}, len(roundSources))
@@ -313,14 +329,23 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 		}
 	}
 	if len(all) == 0 {
-		return nil, fmt.Errorf("no links fetched")
+		if len(cfg.DirectConfigs) == 0 {
+			return discoveryResult{}, fmt.Errorf("no links fetched")
+		}
+	}
+
+	if len(cfg.DirectConfigs) > 0 {
+		all = append(all, cfg.DirectConfigs...)
+		logx.Infof("added %d direct single configs", len(cfg.DirectConfigs))
 	}
 
 	cands := parser.Normalize(all, cfg.OnlySchemes, cfg.MaxCandidates)
 	if len(cands) == 0 {
-		return nil, fmt.Errorf("no candidates after normalize")
+		return discoveryResult{}, fmt.Errorf("no candidates after normalize")
 	}
 	logx.Infof("fetched %d raw links, %d unique candidates after dedup", len(all), len(cands))
+
+	candLatency := map[string]time.Duration{}
 
 	// Latency pre-scan: TCP connect to server addresses, reject slow/unreachable.
 	if cfg.LatencyCutoff > 0 {
@@ -329,12 +354,13 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 		if cfg.LatencyCutoff < dialTimeout {
 			dialTimeout = cfg.LatencyCutoff
 		}
-		cands, latencyRejected := latency.ScanBatch(ctx, cands, dialTimeout, cfg.LatencyCutoff, 50)
+		var latencyRejected int
+		cands, latencyRejected, candLatency = latency.ScanBatchWithLatency(ctx, cands, dialTimeout, cfg.LatencyCutoff, 50)
 		if latencyRejected > 0 {
 			logx.Infof("latency pre-scan: rejected %d unreachable/slow candidates, %d remaining", latencyRejected, len(cands))
 		}
 		if len(cands) == 0 {
-			return nil, fmt.Errorf("no candidates after latency pre-scan")
+			return discoveryResult{}, fmt.Errorf("no candidates after latency pre-scan")
 		}
 	}
 
@@ -344,12 +370,12 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	// Write all fetched configs before validation.
 	writeAllConfigs(cands)
 
-	validation := validateCandidates(ctx, cfg, cands, events, adapter, engineBin)
+	validation := validateCandidates(ctx, cfg, cands, events, adapter, engineBin, candLatency)
 	if len(validation.Working) == 0 {
 		if err := writeCandidateBuckets(nil, validation.Probable); err != nil {
 			logx.Warnf("failed to write candidate buckets: %v", err)
 		}
-		return nil, nil
+		return discoveryResult{Working: nil, Probable: validation.Probable}, nil
 	}
 
 	ranked := validation.Working
@@ -369,10 +395,10 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 		logx.Warnf("failed to write candidate buckets: %v", err)
 	}
 	printTopCandidates(ranked, cfg.TopCount)
-	return ranked, nil
+	return discoveryResult{Working: ranked, Probable: validation.Probable}, nil
 }
 
-func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate, events chan<- WorkerEvent, adapter engines.Adapter, engineBin string) validationSummary {
+func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate, events chan<- WorkerEvent, adapter engines.Adapter, engineBin string, latencies map[string]time.Duration) validationSummary {
 	workers := cfg.Workers
 	if workers < 1 {
 		workers = 1
@@ -396,6 +422,20 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 						return
 					}
 					outcome := testOne(ctx, cfg, c, workerID, events, adapter, engineBin)
+					if outcome.Ranked == nil && outcome.Probable == nil && outcome.Reason == FailureReasonProbeFailed {
+						if lat, ok := latencies[c.Raw]; ok && shouldPromoteLatencyProbable(cfg, lat) {
+							outcome.Probable = &ProbableCandidate{
+								Raw:         c.Raw,
+								Scheme:      c.Scheme,
+								Name:        "low-latency-unverified",
+								Successes:   0,
+								TargetCount: len(cfg.Targets),
+								AvgLatency:  lat,
+								Reason:      FailureReasonProbePartial,
+							}
+							outcome.Reason = FailureReasonProbePartial
+						}
+					}
 					select {
 					case outcomes <- outcome:
 					case <-ctx.Done():
@@ -475,12 +515,13 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 			emitDone(WorkerStatusFailed, FailureReasonReserveAddr, err, attempt)
 			return candidateOutcome{Raw: c.Raw, Reason: FailureReasonReserveAddr}
 		}
-		// Candidate testing always uses proxy mode (no TUN).
+		// Candidate testing should match selected mode. Tunnel mode candidates are
+		// validated with TunnelMode=true to avoid proxy-only false negatives.
 		configJSON, parsed, err := adapter.BuildConfig(engines.ConfigBuildOpts{
 			RawURI:     c.Raw,
 			SocksAddr:  socksAddr,
 			HTTPAddr:   httpAddr,
-			TunnelMode: false,
+			TunnelMode: cfg.IsTunnelMode(),
 			Rules:      cfg.RoutingRules,
 			DNS:        cfg.DNS,
 			Geo:        cfg.GeoRuleSets,
@@ -1206,6 +1247,43 @@ func writeCandidateBuckets(working []Ranked, probable []ProbableCandidate) error
 		return err
 	}
 	return writeLinkBucket(filepath.Join("output", "probable_configs.txt"), "Probable candidates", probableLinks)
+}
+
+func rankedFromProbable(probable []ProbableCandidate) []Ranked {
+	out := make([]Ranked, 0, len(probable))
+	for _, p := range probable {
+		out = append(out, Ranked{
+			Raw:         p.Raw,
+			Scheme:      p.Scheme,
+			Name:        p.Name,
+			Successes:   p.Successes,
+			TargetCount: p.TargetCount,
+			AvgLatency:  p.AvgLatency,
+			BannedOK:    false,
+			Score:       scoreCandidate(p.Successes, p.AvgLatency),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Successes != out[j].Successes {
+			return out[i].Successes > out[j].Successes
+		}
+		if out[i].AvgLatency != out[j].AvgLatency {
+			return out[i].AvgLatency < out[j].AvgLatency
+		}
+		return out[i].Score > out[j].Score
+	})
+	return out
+}
+
+func shouldPromoteLatencyProbable(cfg config.AppConfig, latency time.Duration) bool {
+	if latency <= 0 {
+		return false
+	}
+	threshold := cfg.ProbableLatencyThreshold
+	if threshold <= 0 {
+		return false
+	}
+	return latency <= threshold
 }
 
 func writeLinkBucket(path, title string, rawLinks []string) error {

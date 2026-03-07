@@ -522,6 +522,10 @@ FIVI_SINGBOX_BIN=/path/to/sing-box
 
 # Custom probe targets
 --targets "https://x.com/,https://www.youtube.com/,https://www.cloudflare.com/cdn-cgi/trace"
+
+# Promote probe-failed configs with good latency into probable bucket (default: 450ms)
+# Set 0 to disable latency-based probable promotion.
+--probable-latency-threshold 450ms
 ```
 
 ### Speed Sampling
@@ -539,6 +543,12 @@ FIVI_SINGBOX_BIN=/path/to/sing-box
 ```bash
 # Override default subscription sources (comma-separated)
 --sources "https://example.com/sub1.txt,https://example.com/sub2.txt"
+
+# Add one or more direct single configs (merged with fetched sources)
+--config "vmess://...,vless://..."
+
+# Or load direct configs from file (one URI per line; # comments allowed)
+--config-file ./my-configs.txt
 
 # Filter which protocol schemes to accept (default: vmess,vless,trojan,ss)
 --schemes "vless,trojan"
@@ -669,10 +679,13 @@ FiVi/
 | `--startup-timeout` | `duration` | `8s` | Max wait for engine listeners to become ready |
 | `--fetch-timeout` | `duration` | `25s` | Timeout per source URL fetch |
 | `--probe-timeout` | `duration` | `8s` (iran) / `5s` (global) | Timeout per individual probe request |
+| `--probable-latency-threshold` | `duration` | `450ms` | Max latency for promoting probe-failed candidates to probable (`0` disables) |
 | `--min-success` | `int` | `2` (iran) / `1` (global) | Minimum successful probes to qualify a node |
 | `--monitor-interval` | `duration` | `45s` (iran) / `30s` (global) | Health check interval for active connection |
 | `--monitor-fail-limit` | `int` | `2` | Consecutive monitor failures before failover |
 | `--sources` | `CSV` | 30+ built-in URLs | Comma-separated subscription source URLs |
+| `--config` | `CSV` | `` | Comma-separated single proxy config URIs merged with source results |
+| `--config-file` | `string` | `` | File path with one proxy config URI per line (merged with sources) |
 | `--targets` | `CSV` | Profile-dependent | Comma-separated probe target URLs |
 | `--speed-target` | `string` | `https://www.youtube.com/` | URL for speed measurement through proxy |
 | `--speed-bytes` | `int64` | `524288` (512KB) | Max bytes to download for speed sampling |
@@ -696,3 +709,4 @@ FiVi/
 - Tunnel mode (`--mode tunnel`) requires root/admin privileges or required capabilities for TUN setup on your OS.
 - Source caching (`~/.fivi/cache/sources/` by default, or `FIVI_CACHE_DIR`) persists across runs. Delete cache files to force fresh fetches.
 - Output files in `output/` are overwritten each discovery round.
+- If no `working` candidates are found, FiVi now attempts `probable` candidates as a plan-B before re-running discovery.

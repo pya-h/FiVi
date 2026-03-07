@@ -257,3 +257,46 @@
   - Full suite and build pass:
     - `go test ./...`
     - `go build ./...`
+
+## 16) Request Patchset Update (2026-03-07)
+- **What changed**:
+  - Tunnel-mode validation alignment:
+    - Candidate testing now builds configs with `TunnelMode=cfg.IsTunnelMode()` instead of forcing proxy-mode build semantics.
+  - Direct single-config ingestion:
+    - Added `--config` (CSV) and `--config-file` (one URI per line) and merged direct configs with fetched source links before normalize/dedupe.
+  - Probable classification and fallback:
+    - Added latency-aware probable promotion for candidates that fail probe but have known good connect latency.
+    - Added plan-B flow: if no working candidates are found, FiVi now attempts probable candidates before full rediscovery.
+  - Updated docs/tests/planning for these behaviors.
+- **Files touched**:
+  - `internal/config/config.go`
+  - `internal/config/config_test.go`
+  - `internal/latency/scanner.go`
+  - `internal/engine/engine.go`
+  - `internal/engine/benchmark_test.go`
+  - `internal/engine/tunnel_validation_test.go`
+  - `README.md`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Tunnel users no longer rely on proxy-only candidate qualification, reducing false negatives for tunnel-capable configs.
+  - Users can combine subscriptions and raw single configs in one run.
+  - Runs with zero working candidates now attempt probable configs first, improving connection odds before a full retry cycle.
+- **Validation results**:
+  - Full suite/build pass:
+    - `go test ./...`
+    - `go build ./...`
+
+## 17) Probable Threshold Tuning (2026-03-07)
+- **What changed**:
+  - Added `--probable-latency-threshold` flag to control latency-based promotion of probe-failed candidates into probable bucket.
+  - Default threshold is `450ms`; setting to `0` disables latency-based promotion.
+  - Refactored promotion decision into helper for explicit behavior and testability.
+- **Files touched**:
+  - `internal/config/config.go`
+  - `internal/engine/engine.go`
+  - `internal/engine/tunnel_validation_test.go`
+  - `README.md`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Operators can tune how strict probable promotion should be for low-latency but probe-failed configs.
+  - Helps reduce false optimism in noisy networks while preserving fallback flexibility.

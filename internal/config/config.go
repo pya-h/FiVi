@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"net"
@@ -17,43 +18,45 @@ import (
 )
 
 type AppConfig struct {
-	Profile          string
-	Engine           string
-	Mode             string // "proxy" or "tunnel"
-	XRAYBin          string
-	SingboxBin       string
-	ListenSocksAddr  string
-	ListenHTTPAddr   string
-	ShareMode        bool
-	NoTUI            bool
-	Workers          int
-	MaxCandidates    int
-	TopCount         int
-	CandidateTimeout time.Duration
-	StartupTimeout   time.Duration
-	FetchTimeout     time.Duration
-	ProbeTimeout     time.Duration
-	ProbeMinSuccess  int
-	RequiredTargets  []string
-	MonitorInterval  time.Duration
-	MonitorFailLimit int
-	BootstrapSources []string
-	Targets          []string
-	SpeedTarget      string
-	SpeedTestBytes   int64
-	RetryBackoff     time.Duration
-	LatencyCutoff    time.Duration
-	VerifyRetries    int
-	StandbyTTL       time.Duration
-	AutoReconnect    bool
-	RoutingRules     []routing.Rule
-	DNS              dns.Config
-	GeoBypass        string               // country code for geo-based routing (e.g. "ir")
-	GeoRuleSets      *routing.GeoRuleSets // resolved at startup by engine
-	NetStats         bool                 // enable real-time network statistics
-	NetStatsIface    string               // override interface for netstats (auto-detect if empty)
-	CheckUpdate      bool                 // check installed engine binaries against latest releases
-	OnlySchemes      map[string]bool
+	Profile                  string
+	Engine                   string
+	Mode                     string // "proxy" or "tunnel"
+	XRAYBin                  string
+	SingboxBin               string
+	ListenSocksAddr          string
+	ListenHTTPAddr           string
+	ShareMode                bool
+	NoTUI                    bool
+	Workers                  int
+	MaxCandidates            int
+	TopCount                 int
+	CandidateTimeout         time.Duration
+	StartupTimeout           time.Duration
+	FetchTimeout             time.Duration
+	ProbeTimeout             time.Duration
+	ProbeMinSuccess          int
+	RequiredTargets          []string
+	MonitorInterval          time.Duration
+	MonitorFailLimit         int
+	BootstrapSources         []string
+	DirectConfigs            []string
+	Targets                  []string
+	SpeedTarget              string
+	SpeedTestBytes           int64
+	RetryBackoff             time.Duration
+	LatencyCutoff            time.Duration
+	ProbableLatencyThreshold time.Duration
+	VerifyRetries            int
+	StandbyTTL               time.Duration
+	AutoReconnect            bool
+	RoutingRules             []routing.Rule
+	DNS                      dns.Config
+	GeoBypass                string               // country code for geo-based routing (e.g. "ir")
+	GeoRuleSets              *routing.GeoRuleSets // resolved at startup by engine
+	NetStats                 bool                 // enable real-time network statistics
+	NetStatsIface            string               // override interface for netstats (auto-detect if empty)
+	CheckUpdate              bool                 // check installed engine binaries against latest releases
+	OnlySchemes              map[string]bool
 }
 
 // IsTunnelMode returns true when the user selected tunnel (TUN) connection mode.
@@ -65,44 +68,47 @@ func ParseFlags() AppConfig {
 	defaultProfile := profile.MustResolve("iran")
 
 	var (
-		profileName      = flag.String("profile", "iran", "operational profile name")
-		engine           = flag.String("engine", "xray", "engine backend: xray|singbox")
-		mode             = flag.String("mode", "proxy", "connection mode: proxy|tunnel (tunnel uses TUN interface, may require root/capabilities)")
-		xrayBin          = flag.String("xray-bin", "", "override path to xray binary (auto-resolved from bins/ by default)")
-		singboxBin       = flag.String("singbox-bin", "", "override path to sing-box binary (auto-resolved from bins/ by default)")
-		socksAddr        = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
-		httpAddr         = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
-		shareMode        = flag.Bool("share", false, "bind proxy listeners to 0.0.0.0 for LAN sharing (proxy mode)")
-		noTUI            = flag.Bool("no-tui", false, "disable TUI mode even in interactive terminals")
-		workers          = flag.Int("workers", defaultWorkers(), "parallel workers for candidate testing")
-		maxCandidates    = flag.Int("max-candidates", 0, "max unique candidates to test per round (0 = no limit)")
-		topCount         = flag.Int("top", 5, "number of top ranked candidates to print")
-		candidateTimeout = flag.Duration("candidate-timeout", 24*time.Second, "timeout budget per candidate across all attempts")
-		startupTimeout   = flag.Duration("startup-timeout", 8*time.Second, "max wait for local proxy listeners to become ready after engine start")
-		fetchTimeout     = flag.Duration("fetch-timeout", 25*time.Second, "timeout per source URL fetch")
-		probeTimeout     = flag.Duration("probe-timeout", defaultProfile.ProbeTimeout, "timeout per probe request")
-		minProbeSuccess  = flag.Int("min-success", defaultProfile.ProbeMinOK, "minimum successful target probes required")
-		monitorInterval  = flag.Duration("monitor-interval", defaultProfile.MonitorPeriod, "interval between health checks")
-		monitorFailLimit = flag.Int("monitor-fail-limit", 2, "consecutive monitor failures before failover")
-		sourcesCSV       = flag.String("sources", strings.Join(DefaultSources(), ","), "comma-separated subscription URLs")
-		targetsCSV       = flag.String("targets", strings.Join(defaultProfile.Targets, ","), "comma-separated probe targets")
-		speedTarget      = flag.String("speed-target", "https://www.youtube.com/", "target URL for speed sampling through proxy")
-		speedBytes       = flag.Int64("speed-bytes", 524288, "max bytes to read for speed sampling")
-		retryBackoff     = flag.Duration("retry-backoff", defaultProfile.RetryBackoff, "backoff before restarting discovery when all candidates fail")
+		profileName       = flag.String("profile", "iran", "operational profile name")
+		engine            = flag.String("engine", "xray", "engine backend: xray|singbox")
+		mode              = flag.String("mode", "proxy", "connection mode: proxy|tunnel (tunnel uses TUN interface, may require root/capabilities)")
+		xrayBin           = flag.String("xray-bin", "", "override path to xray binary (auto-resolved from bins/ by default)")
+		singboxBin        = flag.String("singbox-bin", "", "override path to sing-box binary (auto-resolved from bins/ by default)")
+		socksAddr         = flag.String("socks-addr", "127.0.0.1:10808", "SOCKS listen address for active connection")
+		httpAddr          = flag.String("http-addr", "127.0.0.1:10809", "HTTP listen address for active connection")
+		shareMode         = flag.Bool("share", false, "bind proxy listeners to 0.0.0.0 for LAN sharing (proxy mode)")
+		noTUI             = flag.Bool("no-tui", false, "disable TUI mode even in interactive terminals")
+		workers           = flag.Int("workers", defaultWorkers(), "parallel workers for candidate testing")
+		maxCandidates     = flag.Int("max-candidates", 0, "max unique candidates to test per round (0 = no limit)")
+		topCount          = flag.Int("top", 5, "number of top ranked candidates to print")
+		candidateTimeout  = flag.Duration("candidate-timeout", 24*time.Second, "timeout budget per candidate across all attempts")
+		startupTimeout    = flag.Duration("startup-timeout", 8*time.Second, "max wait for local proxy listeners to become ready after engine start")
+		fetchTimeout      = flag.Duration("fetch-timeout", 25*time.Second, "timeout per source URL fetch")
+		probeTimeout      = flag.Duration("probe-timeout", defaultProfile.ProbeTimeout, "timeout per probe request")
+		minProbeSuccess   = flag.Int("min-success", defaultProfile.ProbeMinOK, "minimum successful target probes required")
+		monitorInterval   = flag.Duration("monitor-interval", defaultProfile.MonitorPeriod, "interval between health checks")
+		monitorFailLimit  = flag.Int("monitor-fail-limit", 2, "consecutive monitor failures before failover")
+		sourcesCSV        = flag.String("sources", strings.Join(DefaultSources(), ","), "comma-separated subscription URLs")
+		directConfigsCSV  = flag.String("config", "", "comma-separated single proxy configs/URIs to include alongside subscriptions")
+		directConfigsFile = flag.String("config-file", "", "path to file containing single proxy configs/URIs (one per line)")
+		targetsCSV        = flag.String("targets", strings.Join(defaultProfile.Targets, ","), "comma-separated probe targets")
+		speedTarget       = flag.String("speed-target", "https://www.youtube.com/", "target URL for speed sampling through proxy")
+		speedBytes        = flag.Int64("speed-bytes", 524288, "max bytes to read for speed sampling")
+		retryBackoff      = flag.Duration("retry-backoff", defaultProfile.RetryBackoff, "backoff before restarting discovery when all candidates fail")
 		// latencyCutoff    = flag.Duration("latency-cutoff", 1500*time.Millisecond, "max TCP connect latency for pre-scan; 0 disables pre-scan")
-		latencyCutoff    = flag.Duration("latency-cutoff", 0, "max TCP connect latency for pre-scan; 0 disables pre-scan")
-		verifyRetries    = flag.Int("verify-retries", 5, "post-connect verification attempts before declaring connected")
-		standbyTTL       = flag.Duration("standby-ttl", 10*time.Minute, "warm standby config expiry time; 0 disables warm standby")
-		autoReconnect    = flag.Bool("auto-reconnect", true, "retry same config before failover on transient failures")
-		routingRulesCSV  = flag.String("routing-rules", "", "comma-separated routing rules (e.g. domain:*.ir,ip:1.2.3.4,range:10.0.0.0/8)")
-		routingRulesFile = flag.String("routing-rules-file", "", "path to routing rules file (one rule per line)")
-		dnsPlain         = flag.String("dns", "", "plain DNS server for direct resolution (e.g. 223.5.5.5)")
-		dnsDoH           = flag.String("doh", "", "DNS-over-HTTPS/TLS server for proxy-routed resolution (e.g. tls://8.8.8.8, https://1.1.1.1/dns-query)")
-		geoBypass        = flag.String("geo-bypass", "", "country code for geo-based routing bypass (e.g. ir, cn, ru); downloads .srs rule sets for singbox")
-		netStats         = flag.Bool("stats", false, "enable real-time network statistics in TUI (reads /proc/net/dev)")
-		netStatsIface    = flag.String("stats-iface", "", "network interface for stats (auto-detected if empty)")
-		checkUpdate      = flag.Bool("check-update", false, "check whether engine binaries are outdated on startup")
-		schemesCSV       = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
+		latencyCutoff            = flag.Duration("latency-cutoff", 0, "max TCP connect latency for pre-scan; 0 disables pre-scan")
+		probableLatencyThreshold = flag.Duration("probable-latency-threshold", 450*time.Millisecond, "max latency for promoting probe-failed candidates to probable; 0 disables latency-based promotion")
+		verifyRetries            = flag.Int("verify-retries", 5, "post-connect verification attempts before declaring connected")
+		standbyTTL               = flag.Duration("standby-ttl", 10*time.Minute, "warm standby config expiry time; 0 disables warm standby")
+		autoReconnect            = flag.Bool("auto-reconnect", true, "retry same config before failover on transient failures")
+		routingRulesCSV          = flag.String("routing-rules", "", "comma-separated routing rules (e.g. domain:*.ir,ip:1.2.3.4,range:10.0.0.0/8)")
+		routingRulesFile         = flag.String("routing-rules-file", "", "path to routing rules file (one rule per line)")
+		dnsPlain                 = flag.String("dns", "", "plain DNS server for direct resolution (e.g. 223.5.5.5)")
+		dnsDoH                   = flag.String("doh", "", "DNS-over-HTTPS/TLS server for proxy-routed resolution (e.g. tls://8.8.8.8, https://1.1.1.1/dns-query)")
+		geoBypass                = flag.String("geo-bypass", "", "country code for geo-based routing bypass (e.g. ir, cn, ru); downloads .srs rule sets for singbox")
+		netStats                 = flag.Bool("stats", false, "enable real-time network statistics in TUI (reads /proc/net/dev)")
+		netStatsIface            = flag.String("stats-iface", "", "network interface for stats (auto-detected if empty)")
+		checkUpdate              = flag.Bool("check-update", false, "check whether engine binaries are outdated on startup")
+		schemesCSV               = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
 	flag.Parse()
 	selectedProfile, err := profile.Resolve(*profileName)
@@ -186,48 +192,60 @@ func ParseFlags() AppConfig {
 		allowed[strings.ToLower(s)] = true
 	}
 
+	directConfigs := splitCSV(*directConfigsCSV)
+	if strings.TrimSpace(*directConfigsFile) != "" {
+		fromFile, err := readConfigLines(*directConfigsFile)
+		if err != nil {
+			failFlag("--config-file: %v", err)
+		}
+		directConfigs = append(directConfigs, fromFile...)
+	}
+	directConfigs = uniqueStrings(directConfigs)
+
 	if *shareMode {
 		*socksAddr = sharedListenAddr(*socksAddr)
 		*httpAddr = sharedListenAddr(*httpAddr)
 	}
 
 	return AppConfig{
-		Profile:          selectedProfile.Name,
-		Engine:           engineName,
-		Mode:             modeName,
-		XRAYBin:          xrayBinPath,
-		SingboxBin:       singboxBinPath,
-		ListenSocksAddr:  *socksAddr,
-		ListenHTTPAddr:   *httpAddr,
-		ShareMode:        *shareMode,
-		NoTUI:            *noTUI,
-		Workers:          *workers,
-		MaxCandidates:    *maxCandidates,
-		TopCount:         *topCount,
-		CandidateTimeout: *candidateTimeout,
-		StartupTimeout:   *startupTimeout,
-		FetchTimeout:     *fetchTimeout,
-		ProbeTimeout:     *probeTimeout,
-		ProbeMinSuccess:  *minProbeSuccess,
-		RequiredTargets:  append([]string(nil), selectedProfile.RequiredTargetTokens...),
-		MonitorInterval:  *monitorInterval,
-		MonitorFailLimit: *monitorFailLimit,
-		BootstrapSources: splitCSV(*sourcesCSV),
-		Targets:          splitCSV(*targetsCSV),
-		SpeedTarget:      strings.TrimSpace(*speedTarget),
-		SpeedTestBytes:   *speedBytes,
-		RetryBackoff:     *retryBackoff,
-		LatencyCutoff:    *latencyCutoff,
-		VerifyRetries:    *verifyRetries,
-		StandbyTTL:       *standbyTTL,
-		AutoReconnect:    *autoReconnect,
-		RoutingRules:     routingRules,
-		DNS:              dnsConfig,
-		GeoBypass:        strings.TrimSpace(strings.ToLower(*geoBypass)),
-		NetStats:         *netStats,
-		NetStatsIface:    strings.TrimSpace(*netStatsIface),
-		CheckUpdate:      *checkUpdate,
-		OnlySchemes:      allowed,
+		Profile:                  selectedProfile.Name,
+		Engine:                   engineName,
+		Mode:                     modeName,
+		XRAYBin:                  xrayBinPath,
+		SingboxBin:               singboxBinPath,
+		ListenSocksAddr:          *socksAddr,
+		ListenHTTPAddr:           *httpAddr,
+		ShareMode:                *shareMode,
+		NoTUI:                    *noTUI,
+		Workers:                  *workers,
+		MaxCandidates:            *maxCandidates,
+		TopCount:                 *topCount,
+		CandidateTimeout:         *candidateTimeout,
+		StartupTimeout:           *startupTimeout,
+		FetchTimeout:             *fetchTimeout,
+		ProbeTimeout:             *probeTimeout,
+		ProbeMinSuccess:          *minProbeSuccess,
+		RequiredTargets:          append([]string(nil), selectedProfile.RequiredTargetTokens...),
+		MonitorInterval:          *monitorInterval,
+		MonitorFailLimit:         *monitorFailLimit,
+		BootstrapSources:         splitCSV(*sourcesCSV),
+		DirectConfigs:            directConfigs,
+		Targets:                  splitCSV(*targetsCSV),
+		SpeedTarget:              strings.TrimSpace(*speedTarget),
+		SpeedTestBytes:           *speedBytes,
+		RetryBackoff:             *retryBackoff,
+		LatencyCutoff:            *latencyCutoff,
+		ProbableLatencyThreshold: *probableLatencyThreshold,
+		VerifyRetries:            *verifyRetries,
+		StandbyTTL:               *standbyTTL,
+		AutoReconnect:            *autoReconnect,
+		RoutingRules:             routingRules,
+		DNS:                      dnsConfig,
+		GeoBypass:                strings.TrimSpace(strings.ToLower(*geoBypass)),
+		NetStats:                 *netStats,
+		NetStatsIface:            strings.TrimSpace(*netStatsIface),
+		CheckUpdate:              *checkUpdate,
+		OnlySchemes:              allowed,
 	}
 }
 
@@ -275,6 +293,45 @@ func splitCSV(v string) []string {
 			continue
 		}
 		out = append(out, p)
+	}
+	return out
+}
+
+func readConfigLines(path string) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	res := make([]string, 0, 64)
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		res = append(res, line)
+	}
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func uniqueStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
 	}
 	return out
 }

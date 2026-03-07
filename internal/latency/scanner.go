@@ -22,8 +22,16 @@ type ScanResult struct {
 // be extracted are kept (passed through) to avoid rejecting parseable configs
 // that have unusual URI formats.
 func ScanBatch(ctx context.Context, candidates []parser.Candidate, dialTimeout, cutoff time.Duration, parallelism int) (passed []parser.Candidate, rejected int) {
+	passed, rejected, _ = ScanBatchWithLatency(ctx, candidates, dialTimeout, cutoff, parallelism)
+	return passed, rejected
+}
+
+// ScanBatchWithLatency performs ScanBatch and also returns a per-candidate
+// latency map (raw URI -> connect latency) for passed candidates where latency
+// measurement was available.
+func ScanBatchWithLatency(ctx context.Context, candidates []parser.Candidate, dialTimeout, cutoff time.Duration, parallelism int) (passed []parser.Candidate, rejected int, latencies map[string]time.Duration) {
 	if len(candidates) == 0 {
-		return nil, 0
+		return nil, 0, map[string]time.Duration{}
 	}
 	if parallelism < 1 {
 		parallelism = 50
@@ -66,6 +74,7 @@ func ScanBatch(ctx context.Context, candidates []parser.Candidate, dialTimeout, 
 
 	wg.Wait()
 
+	latencies = make(map[string]time.Duration, len(candidates))
 	passed = make([]parser.Candidate, 0, len(candidates))
 	for i, sr := range results {
 		if sr.Rejected {
@@ -73,8 +82,11 @@ func ScanBatch(ctx context.Context, candidates []parser.Candidate, dialTimeout, 
 			continue
 		}
 		passed = append(passed, candidates[i])
+		if sr.Latency > 0 {
+			latencies[candidates[i].Raw] = sr.Latency
+		}
 	}
-	return passed, rejected
+	return passed, rejected, latencies
 }
 
 func scanOne(ctx context.Context, c parser.Candidate, dialTimeout, cutoff time.Duration) ScanResult {

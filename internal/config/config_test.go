@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -86,5 +87,30 @@ func TestSharedListenAddr(t *testing.T) {
 	}
 	if got := sharedListenAddr("bad-addr"); got != "bad-addr" {
 		t.Fatalf("sharedListenAddr() should keep invalid addr, got=%q", got)
+	}
+}
+
+func TestReadConfigLines(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "configs.txt")
+	content := "\n# comment\n vmess://a\n\n vless://b \n#x\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	got, err := readConfigLines(path)
+	if err != nil {
+		t.Fatalf("readConfigLines: %v", err)
+	}
+	want := []string{"vmess://a", "vless://b"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got=%v want=%v", got, want)
+	}
+}
+
+func TestUniqueStrings(t *testing.T) {
+	got := uniqueStrings([]string{" vmess://a ", "", "vless://b", "vmess://a"})
+	want := []string{"vmess://a", "vless://b"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got=%v want=%v", got, want)
 	}
 }
