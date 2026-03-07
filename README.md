@@ -302,6 +302,12 @@ sudo ./fivi --engine singbox --mode tunnel
 
 Exposes local SOCKS5 and HTTP proxy listeners. Applications must be individually configured to use these proxies.
 
+FiVi also attempts system-proxy automation in proxy mode:
+- Linux GNOME (`gsettings`)
+- Linux KDE (`kwriteconfig5/6`)
+- macOS (`networksetup`)
+- Windows (PowerShell registry updates)
+
 ```bash
 ./fivi --mode proxy --socks-addr 127.0.0.1:10808 --http-addr 127.0.0.1:10809
 ```

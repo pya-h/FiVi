@@ -19,6 +19,10 @@ func Enable(socksHost string, socksPort int, httpHost string, httpPort int) (res
 		return EnableWindows(socksHost, socksPort, httpHost, httpPort)
 	}
 
+	if runtime.GOOS == "darwin" {
+		return EnableDarwin(socksHost, socksPort, httpHost, httpPort)
+	}
+
 	if runtime.GOOS == "linux" {
 		switch DetectLinuxDesktopEnvironment() {
 		case DesktopKDE:

@@ -293,17 +293,16 @@ func checkSystemProxySupport(mode string, env Environment) []Finding {
 	case "darwin":
 		if hasAny(env.LookPath, "networksetup") {
 			return []Finding{{
-				Severity: SeverityWarn,
+				Severity: SeverityPass,
 				Check:    "system-proxy",
-				Message:  "networksetup command is available, but macOS auto system-proxy integration is not implemented yet",
-				Hint:     "Configure system proxy manually or use tunnel mode",
+				Message:  "networksetup command is available for macOS proxy automation",
 			}}
 		}
 		return []Finding{{
 			Severity: SeverityWarn,
 			Check:    "system-proxy",
-			Message:  "networksetup command is missing; macOS proxy automation is unavailable",
-			Hint:     "Install command-line network tools or configure proxy manually",
+			Message:  "networksetup command is missing; macOS automatic system-proxy setup may fail",
+			Hint:     "Install macOS network command-line tools or configure system proxy manually",
 		}}
 	default:
 		return []Finding{{

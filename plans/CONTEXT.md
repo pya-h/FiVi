@@ -560,3 +560,67 @@
     - `go build ./...`
 - **Next task / blocker**:
   - Backlog milestone sequence is complete through `N8`; next work is a new requested patchset or future backlog expansion.
+
+## 27) L2 macOS System Proxy + Full Audit Pass (2026-03-07)
+- **What changed**:
+  - Implemented macOS system proxy backend (`networksetup`) in `internal/sysproxy/darwin.go`:
+    - enumerate network services,
+    - apply SOCKS proxy for each service,
+    - set bypass domains,
+    - save/restore per-service prior SOCKS + bypass state.
+  - Added Darwin parser/command tests in `internal/sysproxy/darwin_test.go`.
+  - Updated sysproxy dispatcher to route `runtime.GOOS == darwin` through new backend.
+  - Ran full codebase audit and fixed a rollout-accounting bug:
+    - startup success is now recorded only on clean run completion (`err == nil`),
+    - interrupted/canceled runs no longer incorrectly mark binaries as successful.
+  - Updated README proxy-mode docs with cross-platform automation support matrix.
+- **Files touched**:
+  - `internal/sysproxy/darwin.go`
+  - `internal/sysproxy/darwin_test.go`
+  - `internal/sysproxy/gnome.go`
+  - `main.go`
+  - `README.md`
+  - `plans/TASKS.md`
+  - `plans/CONTEXT.md`
+- **Behavior impact**:
+  - Proxy mode now supports automatic macOS SOCKS system-proxy setup and restoration.
+  - Binary rollout health signals are more accurate because canceled runs are not treated as successful startups.
+  - Documentation now reflects actual platform proxy behavior.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/sysproxy`
+  - Full-suite and static checks pass:
+    - `go test ./...`
+    - `go vet ./...`
+    - `go build ./...`
+- **Next task / blocker**:
+  - Milestone backlog items are complete through `N8`; optional next step is broader feature iteration or performance profiling-driven enhancements.
+
+## 28) Post-L2 Optimization Follow-up (2026-03-07)
+- **What changed**:
+  - Fixed diagnostics consistency bug in `doctor` for macOS:
+    - `./fivi doctor` now reports `PASS` when `networksetup` is present on Darwin,
+    - warning text now only applies when `networksetup` is missing.
+  - Added Darwin-specific doctor tests to lock expected behavior.
+  - Improved monitoring responsiveness by capping speed-sample timeout used in monitor ticks:
+    - speed sampling now uses `min(--probe-timeout, 4s)`.
+    - prevents long speed tests from delaying health-loop progression and failover decisions under high timeouts.
+  - Added unit tests for speed-sample timeout derivation.
+- **Files touched**:
+  - `internal/doctor/doctor.go`
+  - `internal/doctor/doctor_test.go`
+  - `internal/engine/engine.go`
+  - `internal/engine/monitor_timeout_test.go`
+  - `plans/CONTEXT.md`
+- **Behavior impact**:
+  - `doctor` output now accurately matches implemented macOS proxy support.
+  - Active-session monitoring remains more responsive even when users set large probe timeouts, reducing risk of delayed degradation handling.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/doctor`
+    - `go test ./internal/engine`
+  - Full suite/build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task / blocker**:
+  - No open milestone blocker in `TASKS.md`; next valuable step is profile-guided performance tuning (`pprof`) on discovery worker throughput.

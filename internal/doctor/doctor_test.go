@@ -101,6 +101,26 @@ func TestDiagnoseLinuxKDEWithCommandPasses(t *testing.T) {
 	assertFindingSeverity(t, report, "system-proxy", SeverityPass)
 }
 
+func TestDiagnoseDarwinWithNetworksetupPasses(t *testing.T) {
+	report := Diagnose(Options{Mode: "proxy", DNS: dns.Default()}, Environment{
+		GOOS:     "darwin",
+		LookPath: fakeLookPath("networksetup"),
+		Getenv:   fakeEnv(nil),
+	})
+
+	assertFindingSeverity(t, report, "system-proxy", SeverityPass)
+}
+
+func TestDiagnoseDarwinWithoutNetworksetupWarns(t *testing.T) {
+	report := Diagnose(Options{Mode: "proxy", DNS: dns.Default()}, Environment{
+		GOOS:     "darwin",
+		LookPath: fakeLookPath(),
+		Getenv:   fakeEnv(nil),
+	})
+
+	assertFindingSeverity(t, report, "system-proxy", SeverityWarn)
+}
+
 func TestFormatReportIncludesSummary(t *testing.T) {
 	report := Report{Findings: []Finding{{Severity: SeverityPass, Check: "routing-rules", Message: "ok"}}}
 	out := FormatReport(report)

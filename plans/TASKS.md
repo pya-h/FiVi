@@ -307,7 +307,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Output: `internal/sysproxy/kde.go`, `kde_test.go`.
 - Done when: KDE proxy is set on connect and restored on disconnect.
 
-52. [ ] `L2` Expand system proxy to macOS.
+52. [x] `L2` Expand system proxy to macOS.
 - Add `internal/sysproxy/darwin.go`.
 - Use `networksetup -setsocksfirewallproxy <service> <ip> <port>` for all network services.
 - Set bypass domains via `networksetup -setproxybypassdomains`.

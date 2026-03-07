@@ -110,7 +110,9 @@ func main() {
 		cleanupMgr.Run()
 		os.Exit(1)
 	}
-	recordStartupSuccess(cfg)
+	if err == nil {
+		recordStartupSuccess(cfg)
+	}
 	logx.Infof("fivi stopped")
 }
 
@@ -480,7 +482,9 @@ func runDaemonChild(appArgs []string) {
 		cleanupMgr.Run()
 		os.Exit(1)
 	}
-	recordStartupSuccess(cfg)
+	if err == nil {
+		recordStartupSuccess(cfg)
+	}
 	logx.Infof("daemon mode stopped")
 }
 

@@ -767,6 +767,7 @@ const (
 	autoReconnectMaxAttempts  = 3
 	autoReconnectBaseBackoff  = 2 * time.Second
 	autoReconnectMaxBackoff   = 30 * time.Second
+	maxSpeedSampleTimeout     = 4 * time.Second
 	urltestStableChecks       = 2
 	urltestBenchmarkEveryTick = 3
 	urltestBenchmarkTopN      = 3
@@ -981,7 +982,7 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 				failures = 0
 				speed := 0.0
 				if tick%3 == 0 {
-					s, err := measureDownloadFn(ctx, cfg.ListenSocksAddr, cfg.SpeedTarget, cfg.ProbeTimeout, cfg.SpeedTestBytes)
+					s, err := measureDownloadFn(ctx, cfg.ListenSocksAddr, cfg.SpeedTarget, effectiveSpeedSampleTimeout(cfg), cfg.SpeedTestBytes)
 					if err == nil {
 						speed = s
 					}
@@ -1029,6 +1030,17 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 			}
 		}
 	}
+}
+
+func effectiveSpeedSampleTimeout(cfg config.AppConfig) time.Duration {
+	probeTimeout := cfg.ProbeTimeout
+	if probeTimeout <= 0 {
+		return maxSpeedSampleTimeout
+	}
+	if probeTimeout > maxSpeedSampleTimeout {
+		return maxSpeedSampleTimeout
+	}
+	return probeTimeout
 }
 
 func effectiveQualityFloorStreak(cfg config.AppConfig) int {
