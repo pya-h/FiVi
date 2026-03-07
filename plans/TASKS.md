@@ -395,7 +395,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Support proxy mode first; tunnel optional if low complexity.
 - Done when: discovery/connect/monitor works with hysteria2 or feasibility is explicitly documented as deferred.
 
-63. [ ] `N4` Additional mode: `urltest` continuous benchmarking mode.
+63. [x] `N4` Additional mode: `urltest` continuous benchmarking mode.
 - New mode where FiVi continuously benchmarks top candidates in background and switches proactively before degradation.
 - Keep current mode semantics unchanged.
 - Done when: active node can be preemptively switched based on stable score drop thresholds.

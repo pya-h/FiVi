@@ -756,16 +756,21 @@ func isListeningAddr(addr string) bool {
 }
 
 const (
-	autoReconnectMaxAttempts = 3
-	autoReconnectBaseBackoff = 2 * time.Second
-	autoReconnectMaxBackoff  = 30 * time.Second
+	autoReconnectMaxAttempts  = 3
+	autoReconnectBaseBackoff  = 2 * time.Second
+	autoReconnectMaxBackoff   = 30 * time.Second
+	urltestStableChecks       = 2
+	urltestBenchmarkEveryTick = 3
+	urltestBenchmarkTopN      = 3
+	urltestDropThreshold      = 0.35
+	urltestSwitchGain         = 0.15
 )
 
 func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranked, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) error {
 	for i := 0; i < len(ranked); i++ {
 		cand := ranked[i]
 
-		err := connectAndMonitorOne(ctx, cfg, cand, status, adapter, engineBin)
+		err := connectAndMonitorOne(ctx, cfg, cand, ranked, i, status, adapter, engineBin)
 		if err == nil || errors.Is(err, context.Canceled) {
 			return err
 		}
@@ -782,7 +787,7 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 					return ctx.Err()
 				}
 
-				retryErr := connectAndMonitorOne(ctx, cfg, cand, status, adapter, engineBin)
+				retryErr := connectAndMonitorOne(ctx, cfg, cand, ranked, i, status, adapter, engineBin)
 				if retryErr == nil || errors.Is(retryErr, context.Canceled) {
 					return retryErr
 				}
@@ -808,7 +813,7 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 	return fmt.Errorf("exhausted %d ranked nodes", len(ranked))
 }
 
-func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) error {
+func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked, ranked []Ranked, currentIndex int, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) error {
 	emitStatus(status, StatusUpdate{
 		Phase:    PhaseConnecting,
 		NodeName: displayName(cand),
@@ -886,7 +891,7 @@ func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked
 		SocksAddr:   cfg.ListenSocksAddr,
 		HTTPAddr:    cfg.ListenHTTPAddr,
 	})
-	monitorErr := monitorConnection(ctx, cfg, cand, connectedAt, status)
+	monitorErr := monitorConnection(ctx, cfg, cand, ranked, currentIndex, connectedAt, status, adapter, engineBin)
 	if pacSrv != nil {
 		pacSrv.Stop()
 		logx.Infof("PAC server stopped")
@@ -899,12 +904,15 @@ func connectAndMonitorOne(ctx context.Context, cfg config.AppConfig, cand Ranked
 	return monitorErr
 }
 
-func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, connectedAt time.Time, status chan<- StatusUpdate) error {
+func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, ranked []Ranked, currentIndex int, connectedAt time.Time, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) error {
 	ticker := time.NewTicker(cfg.MonitorInterval)
 	defer ticker.Stop()
 
 	failures := 0
 	tick := 0
+	dropStreak := 0
+	altBetterStreak := 0
+	baselineScore := 0.0
 	for {
 		select {
 		case <-ctx.Done():
@@ -913,6 +921,40 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 			tick++
 			res := checkThroughSOCKSFn(ctx, cfg.ListenSocksAddr, cfg.Targets, cfg.ProbeTimeout)
 			if isProbeQualified(cfg, res) {
+				activeScore := scoreCandidate(res.Successes, res.AvgLatency)
+				if baselineScore <= 0 {
+					baselineScore = activeScore
+				} else if activeScore > baselineScore {
+					baselineScore = activeScore
+				}
+
+				if cfg.Mode == "urltest" && baselineScore > 0 {
+					dropFloor := baselineScore * (1 - urltestDropThreshold)
+					if activeScore < dropFloor {
+						dropStreak++
+					} else {
+						dropStreak = 0
+					}
+					if dropStreak >= urltestStableChecks {
+						return fmt.Errorf("urltest proactive switch: active score dropped below stable threshold (score=%.1f baseline=%.1f)", activeScore, baselineScore)
+					}
+
+					if tick%urltestBenchmarkEveryTick == 0 {
+						altScore, altName, ok := benchmarkAlternatives(ctx, cfg, ranked, currentIndex, adapter, engineBin)
+						if ok {
+							if altScore > activeScore*(1+urltestSwitchGain) {
+								altBetterStreak++
+								logx.Infof("urltest benchmark: candidate %s outperforms active %.1f -> %.1f (streak=%d)", altName, activeScore, altScore, altBetterStreak)
+							} else {
+								altBetterStreak = 0
+							}
+							if altBetterStreak >= urltestStableChecks {
+								return fmt.Errorf("urltest proactive switch: better candidate benchmarked consistently (active=%.1f alt=%.1f)", activeScore, altScore)
+							}
+						}
+					}
+				}
+
 				failures = 0
 				speed := 0.0
 				if tick%3 == 0 {
@@ -937,6 +979,8 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 				})
 				continue
 			}
+			dropStreak = 0
+			altBetterStreak = 0
 			failures++
 			printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, 0, connectedAt, res, 0, failures)
 			emitStatus(status, StatusUpdate{
@@ -956,6 +1000,38 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, c
 			}
 		}
 	}
+}
+
+func benchmarkAlternatives(ctx context.Context, cfg config.AppConfig, ranked []Ranked, currentIndex int, adapter engines.Adapter, engineBin string) (bestScore float64, bestName string, ok bool) {
+	if len(ranked) == 0 || adapter == nil {
+		return 0, "", false
+	}
+	maxBench := urltestBenchmarkTopN
+	benchCount := 0
+	best := 0.0
+	bestDisplay := ""
+	for i := 0; i < len(ranked) && benchCount < maxBench; i++ {
+		if i == currentIndex {
+			continue
+		}
+		benchCount++
+		benchCtx, cancel := context.WithTimeout(ctx, cfg.CandidateTimeout)
+		if cfg.CandidateTimeout <= 0 {
+			benchCtx, cancel = context.WithTimeout(ctx, 12*time.Second)
+		}
+		outcome := testOne(benchCtx, cfg, parser.Candidate{Raw: ranked[i].Raw, Scheme: ranked[i].Scheme}, 0, nil, adapter, engineBin)
+		cancel()
+		if outcome.Ranked == nil {
+			continue
+		}
+		score := outcome.Ranked.Score
+		if !ok || score > best {
+			ok = true
+			best = score
+			bestDisplay = displayName(*outcome.Ranked)
+		}
+	}
+	return best, bestDisplay, ok
 }
 
 func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string, adapter engines.Adapter, engineBin string) (engines.Instance, probe.Result, float64, error) {

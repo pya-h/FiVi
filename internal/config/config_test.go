@@ -46,6 +46,7 @@ func TestNormalizeMode(t *testing.T) {
 	}{
 		{in: "proxy", want: "proxy"},
 		{in: "tunnel", want: "tunnel"},
+		{in: "urltest", want: "urltest"},
 		{in: "TUNNEL", want: "tunnel"},
 		{in: "PROXY", want: "proxy"},
 		{in: "invalid", want: "proxy"},

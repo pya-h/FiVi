@@ -396,3 +396,33 @@
     - `go build ./...`
 - **Next task**:
   - `N4` Additional mode: `urltest` continuous benchmarking mode.
+
+## 22) N4 URLTest Continuous Benchmarking Mode (2026-03-07)
+- **What changed**:
+  - Added new connection mode: `--mode urltest`.
+  - Implemented proactive switching logic in monitoring path while preserving existing `proxy` and `tunnel` semantics.
+  - URLTest mode now:
+    - tracks active candidate score stability over time,
+    - triggers preemptive failover on stable score drop,
+    - periodically benchmarks top alternative ranked candidates,
+    - triggers preemptive failover when a better candidate consistently outperforms active.
+  - Added helper benchmark path that reuses existing candidate validation pipeline (`testOne`) for alternative-candidate scoring.
+  - Extended mode normalization/documentation to include `urltest`.
+- **Files touched**:
+  - `internal/engine/engine.go`
+  - `internal/engine/urltest_test.go`
+  - `internal/config/config.go`
+  - `internal/config/config_test.go`
+  - `README.md`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Active node can now be switched before hard outage in URLTest mode when degradation is stable or alternatives are consistently better.
+  - Existing `proxy` and `tunnel` modes remain unchanged.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/config ./internal/engine`
+  - Full suite/build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task**:
+  - `N5` UI clarity improvements for long runs.

@@ -65,13 +65,18 @@ func (c AppConfig) IsTunnelMode() bool {
 	return strings.EqualFold(c.Mode, "tunnel")
 }
 
+// IsURLTestMode returns true when continuous urltest monitoring mode is enabled.
+func (c AppConfig) IsURLTestMode() bool {
+	return strings.EqualFold(c.Mode, "urltest")
+}
+
 func ParseFlags() AppConfig {
 	defaultProfile := profile.MustResolve("iran")
 
 	var (
 		profileName       = flag.String("profile", "iran", "operational profile name")
 		engine            = flag.String("engine", "xray", "engine backend: xray|singbox|hysteria2")
-		mode              = flag.String("mode", "proxy", "connection mode: proxy|tunnel (tunnel uses TUN interface, may require root/capabilities)")
+		mode              = flag.String("mode", "proxy", "connection mode: proxy|tunnel|urltest (urltest runs proxy mode with proactive switching)")
 		xrayBin           = flag.String("xray-bin", "", "override path to xray binary (auto-resolved from bins/ by default)")
 		singboxBin        = flag.String("singbox-bin", "", "override path to sing-box binary (auto-resolved from bins/ by default)")
 		hysteria2Bin      = flag.String("hysteria2-bin", "", "override path to hysteria2 binary (auto-resolved from bins/ by default)")
@@ -366,7 +371,7 @@ func normalizeEngine(v string) string {
 func normalizeMode(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))
 	switch v {
-	case "proxy", "tunnel":
+	case "proxy", "tunnel", "urltest":
 		return v
 	default:
 		return "proxy"

@@ -292,6 +292,14 @@ sudo ./fivi --engine singbox --mode tunnel
 
 > **Note:** Tunnel mode requires elevated privileges/capabilities for TUN setup and routing on your OS.
 
+### URLTest Mode (`--mode urltest`)
+
+Runs in proxy mode but adds continuous quality tracking and proactive switching. FiVi monitors active-node score over time and periodically benchmarks top alternatives, then switches before hard outage when degradation is sustained.
+
+```bash
+./fivi --mode urltest --engine singbox
+```
+
 ---
 
 ## UI Modes
@@ -467,6 +475,7 @@ Once connected, FiVi continuously monitors the active node:
 # Connection mode
 --mode proxy           # SOCKS5 + HTTP listeners only
 --mode tunnel          # TUN device (all traffic, singbox only, requires root)
+--mode urltest         # Proxy mode + proactive switching via continuous benchmarking
 ```
 
 ### Binary Paths
@@ -602,6 +611,13 @@ sudo ./fivi --engine singbox --mode tunnel
 ```
 Creates a TUN device that routes all system traffic — no per-app proxy setup needed.
 
+### Continuous benchmarking with proactive switching
+
+```bash
+./fivi --mode urltest --engine singbox --monitor-interval 20s
+```
+Keeps active proxy mode, benchmarks alternatives periodically, and switches candidates preemptively when stable score drop thresholds are crossed.
+
 ### Fast scan with many workers, global profile
 
 ```bash
@@ -647,7 +663,8 @@ FiVi/
 │   ├── engines/
 │   │   ├── adapter.go             # Engine adapter interface
 │   │   ├── xray.go                # Xray adapter (config gen, process mgmt)
-│   │   └── singbox.go             # Sing-box adapter (config gen, TUN, process mgmt)
+│   │   ├── singbox.go             # Sing-box adapter (config gen, TUN, process mgmt)
+│   │   └── hysteria2.go           # Hysteria2 adapter (proxy mode)
 │   ├── xray/
 │   │   ├── config.go              # URI parsing (vmess/vless/trojan/ss → config)
 │   │   └── process.go             # Xray process lifecycle management
@@ -680,10 +697,11 @@ FiVi/
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--profile` | `string` | `iran` | Operational profile (`iran` or `global`) |
-| `--engine` | `string` | `xray` | Engine backend (`xray` or `singbox`) |
-| `--mode` | `string` | `proxy` | Connection mode (`proxy` or `tunnel`) |
+| `--engine` | `string` | `xray` | Engine backend (`xray`, `singbox`, or `hysteria2`) |
+| `--mode` | `string` | `proxy` | Connection mode (`proxy`, `tunnel`, or `urltest`) |
 | `--xray-bin` | `string` | auto-resolved | Path to xray binary |
 | `--singbox-bin` | `string` | auto-resolved | Path to sing-box binary |
+| `--hysteria2-bin` | `string` | auto-resolved | Path to hysteria2 binary |
 | `--socks-addr` | `string` | `127.0.0.1:10808` | SOCKS5 listen address |
 | `--http-addr` | `string` | `127.0.0.1:10809` | HTTP proxy listen address |
 | `--no-tui` | `bool` | `false` | Disable interactive TUI, use plain log output |
