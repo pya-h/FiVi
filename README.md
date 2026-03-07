@@ -551,6 +551,11 @@ FIVI_HYSTERIA2_BIN=/path/to/hysteria
 # Consecutive health check failures before failover (default: 2)
 --monitor-fail-limit 3
 
+# Soft-failover quality guardrails for active session (disabled by default)
+--quality-latency-floor 180ms
+--quality-jitter-floor 80ms
+--quality-floor-streak 2
+
 # Custom probe targets
 --targets "https://x.com/,https://www.youtube.com/,https://www.cloudflare.com/cdn-cgi/trace"
 
@@ -723,6 +728,9 @@ FiVi/
 | `--min-success` | `int` | `2` (iran) / `1` (global) | Minimum successful probes to qualify a node |
 | `--monitor-interval` | `duration` | `45s` (iran) / `30s` (global) | Health check interval for active connection |
 | `--monitor-fail-limit` | `int` | `2` | Consecutive monitor failures before failover |
+| `--quality-latency-floor` | `duration` | `0` | Soft-failover threshold for active average latency (`0` disables) |
+| `--quality-jitter-floor` | `duration` | `0` | Soft-failover threshold for active latency jitter (`0` disables) |
+| `--quality-floor-streak` | `int` | `2` | Consecutive quality breaches before soft failover |
 | `--sources` | `CSV` | 30+ built-in URLs | Comma-separated subscription source URLs |
 | `--config` | `CSV` | `` | Comma-separated single proxy config URIs merged with source results |
 | `--config-file` | `string` | `` | File path with one proxy config URI per line (merged with sources) |

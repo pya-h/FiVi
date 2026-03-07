@@ -39,6 +39,9 @@ type AppConfig struct {
 	RequiredTargets          []string
 	MonitorInterval          time.Duration
 	MonitorFailLimit         int
+	QualityLatencyFloor      time.Duration
+	QualityJitterFloor       time.Duration
+	QualityFloorStreak       int
 	BootstrapSources         []string
 	DirectConfigs            []string
 	Targets                  []string
@@ -94,6 +97,9 @@ func ParseFlags() AppConfig {
 		minProbeSuccess   = flag.Int("min-success", defaultProfile.ProbeMinOK, "minimum successful target probes required")
 		monitorInterval   = flag.Duration("monitor-interval", defaultProfile.MonitorPeriod, "interval between health checks")
 		monitorFailLimit  = flag.Int("monitor-fail-limit", 2, "consecutive monitor failures before failover")
+		qualityLatency    = flag.Duration("quality-latency-floor", 0, "soft-failover threshold for active session average latency; 0 disables")
+		qualityJitter     = flag.Duration("quality-jitter-floor", 0, "soft-failover threshold for active session latency jitter; 0 disables")
+		qualityStreak     = flag.Int("quality-floor-streak", 2, "consecutive quality floor breaches before soft failover")
 		sourcesCSV        = flag.String("sources", strings.Join(DefaultSources(), ","), "comma-separated subscription URLs")
 		directConfigsCSV  = flag.String("config", "", "comma-separated single proxy configs/URIs to include alongside subscriptions")
 		directConfigsFile = flag.String("config-file", "", "path to file containing single proxy configs/URIs (one per line)")
@@ -241,6 +247,9 @@ func ParseFlags() AppConfig {
 		RequiredTargets:          append([]string(nil), selectedProfile.RequiredTargetTokens...),
 		MonitorInterval:          *monitorInterval,
 		MonitorFailLimit:         *monitorFailLimit,
+		QualityLatencyFloor:      *qualityLatency,
+		QualityJitterFloor:       *qualityJitter,
+		QualityFloorStreak:       *qualityStreak,
 		BootstrapSources:         splitCSV(*sourcesCSV),
 		DirectConfigs:            directConfigs,
 		Targets:                  splitCSV(*targetsCSV),

@@ -458,3 +458,34 @@
     - `go build ./...`
 - **Next task**:
   - `N6` Connection quality guardrails.
+
+## 24) N6 Connection Quality Guardrails (2026-03-07)
+- **What changed**:
+  - Added optional active-session quality guardrails:
+    - `--quality-latency-floor`
+    - `--quality-jitter-floor`
+    - `--quality-floor-streak`
+  - Extended monitor loop to evaluate quality even when probes still pass, using:
+    - average probe latency,
+    - probe latency jitter (standard deviation across successful targets).
+  - Added soft-failover path: when quality floors are breached for consecutive checks (`quality-floor-streak`), active candidate is rotated before hard outage.
+  - Added helper functions for jitter calculation, guardrail breach evaluation, and streak normalization.
+- **Files touched**:
+  - `internal/config/config.go`
+  - `internal/engine/engine.go`
+  - `internal/engine/quality_guardrail_test.go`
+  - `internal/engine/tunnel_validation_test.go`
+  - `README.md`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - FiVi can now preemptively fail over on sustained poor quality (high latency/jitter) before hard monitor failures accumulate.
+  - Guardrails are opt-in (`0` disables latency/jitter thresholds), so existing deployments keep prior behavior unless enabled.
+- **Validation results**:
+  - Focused package tests pass:
+    - `go test ./internal/engine`
+    - `go test ./internal/config`
+  - Full suite/build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task**:
+  - `N7` Route/DNS runtime diagnostics (`./fivi doctor`).

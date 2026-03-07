@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -921,6 +922,7 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 	altBetterStreak := 0
 	baselineScore := 0.0
 	recentFailures := make([]FailureReason, 0, monitorInsightWindow)
+	qualityBadStreak := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -931,6 +933,17 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 			if isProbeQualified(cfg, res) {
 				recentFailures = appendRollingFailure(recentFailures, "", monitorInsightWindow)
 				failureTop := summarizeFailureReasons(recentFailures, summaryTopN)
+				jitter := probeJitter(res.Targets)
+				qualityBreaches := qualityGuardrailBreaches(cfg, res.AvgLatency, jitter)
+				if len(qualityBreaches) > 0 {
+					qualityBadStreak++
+					logx.Warnf("quality guardrail breach for %s: %s (streak=%d/%d)", displayName(cand), strings.Join(qualityBreaches, "; "), qualityBadStreak, effectiveQualityFloorStreak(cfg))
+					if qualityBadStreak >= effectiveQualityFloorStreak(cfg) {
+						return fmt.Errorf("soft failover: quality floor breached (%s)", strings.Join(qualityBreaches, "; "))
+					}
+				} else {
+					qualityBadStreak = 0
+				}
 				activeScore := scoreCandidate(res.Successes, res.AvgLatency)
 				if baselineScore <= 0 {
 					baselineScore = activeScore
@@ -992,6 +1005,7 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 			}
 			dropStreak = 0
 			altBetterStreak = 0
+			qualityBadStreak = 0
 			reason := classifyMonitorFailure(cfg, res)
 			recentFailures = appendRollingFailure(recentFailures, reason, monitorInsightWindow)
 			failureTop := summarizeFailureReasons(recentFailures, summaryTopN)
@@ -1015,6 +1029,49 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 			}
 		}
 	}
+}
+
+func effectiveQualityFloorStreak(cfg config.AppConfig) int {
+	if cfg.QualityFloorStreak < 1 {
+		return 1
+	}
+	return cfg.QualityFloorStreak
+}
+
+func qualityGuardrailBreaches(cfg config.AppConfig, avgLatency, jitter time.Duration) []string {
+	breaches := make([]string, 0, 2)
+	if cfg.QualityLatencyFloor > 0 && avgLatency > cfg.QualityLatencyFloor {
+		breaches = append(breaches, fmt.Sprintf("latency=%s>%s", avgLatency.Round(time.Millisecond), cfg.QualityLatencyFloor.Round(time.Millisecond)))
+	}
+	if cfg.QualityJitterFloor > 0 && jitter > cfg.QualityJitterFloor {
+		breaches = append(breaches, fmt.Sprintf("jitter=%s>%s", jitter.Round(time.Millisecond), cfg.QualityJitterFloor.Round(time.Millisecond)))
+	}
+	return breaches
+}
+
+func probeJitter(targets []probe.TargetResult) time.Duration {
+	latencies := make([]float64, 0, len(targets))
+	for _, target := range targets {
+		if !target.OK || target.Latency <= 0 {
+			continue
+		}
+		latencies = append(latencies, float64(target.Latency))
+	}
+	if len(latencies) < 2 {
+		return 0
+	}
+	mean := 0.0
+	for _, latency := range latencies {
+		mean += latency
+	}
+	mean /= float64(len(latencies))
+	variance := 0.0
+	for _, latency := range latencies {
+		delta := latency - mean
+		variance += delta * delta
+	}
+	variance /= float64(len(latencies))
+	return time.Duration(math.Sqrt(variance))
 }
 
 func classifyMonitorFailure(cfg config.AppConfig, res probe.Result) FailureReason {

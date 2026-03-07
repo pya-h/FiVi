@@ -181,3 +181,33 @@ func TestSummarizeSourceHealthTop(t *testing.T) {
 		t.Fatalf("expected yield in top item, got %q", top[0])
 	}
 }
+
+func TestProbeJitter(t *testing.T) {
+	result := probeJitter([]probe.TargetResult{
+		{URL: "a", OK: true, Latency: 100 * time.Millisecond},
+		{URL: "b", OK: true, Latency: 200 * time.Millisecond},
+		{URL: "c", OK: true, Latency: 300 * time.Millisecond},
+	})
+	if result < 80*time.Millisecond || result > 82*time.Millisecond {
+		t.Fatalf("unexpected jitter=%s", result)
+	}
+}
+
+func TestQualityGuardrailBreaches(t *testing.T) {
+	cfg := config.AppConfig{
+		QualityLatencyFloor: 180 * time.Millisecond,
+		QualityJitterFloor:  50 * time.Millisecond,
+		QualityFloorStreak:  2,
+	}
+	breaches := qualityGuardrailBreaches(cfg, 220*time.Millisecond, 65*time.Millisecond)
+	if len(breaches) != 2 {
+		t.Fatalf("expected 2 breaches, got %d (%v)", len(breaches), breaches)
+	}
+	if effectiveQualityFloorStreak(cfg) != 2 {
+		t.Fatalf("unexpected streak=%d", effectiveQualityFloorStreak(cfg))
+	}
+	cfg.QualityFloorStreak = 0
+	if effectiveQualityFloorStreak(cfg) != 1 {
+		t.Fatalf("expected clamped streak=1, got %d", effectiveQualityFloorStreak(cfg))
+	}
+}

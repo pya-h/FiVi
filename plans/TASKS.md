@@ -406,7 +406,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Mirror key TUI insights in `--no-tui` snapshots.
 - Done when: users can diagnose stalls/degradation without reading verbose logs.
 
-65. [ ] `N6` Connection quality guardrails.
+65. [x] `N6` Connection quality guardrails.
 - Add optional latency/jitter floors for active session, not just initial candidate qualification.
 - Trigger soft failover before hard outage when metrics cross configured thresholds.
 - Done when: severe quality drops trigger earlier failover with fewer user-visible outages.
