@@ -411,7 +411,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Trigger soft failover before hard outage when metrics cross configured thresholds.
 - Done when: severe quality drops trigger earlier failover with fewer user-visible outages.
 
-66. [ ] `N7` Route/DNS runtime diagnostics.
+66. [x] `N7` Route/DNS runtime diagnostics.
 - Add `./fivi doctor` subcommand to validate DNS/routing/proxy assumptions pre-connect.
 - Include checks for loop risks, unresolved DoH bootstrap, and system-proxy command availability.
 - Done when: users get actionable preflight output before starting a long discovery run.

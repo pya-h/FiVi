@@ -144,6 +144,26 @@ FIVI_XRAY_BIN=/usr/local/bin/xray ./fivi
 ./fivi --check-update
 ```
 
+### Route/DNS/System-Proxy Preflight (`doctor`)
+
+Run pre-connect diagnostics before a long discovery session:
+
+```bash
+# Validate defaults for current OS/profile
+./fivi doctor
+
+# Validate custom DNS and routing assumptions
+./fivi doctor --mode proxy --dns 223.5.5.5 --doh https://dns.google/dns-query \
+      --routing-rules "domain:*.ir,domain:!forced.com,range:10.0.0.0/8"
+```
+
+`doctor` checks:
+- routing rule parse/precedence issues,
+- DNS bootstrap loop risks (e.g., DoH hostname with non-IP bootstrap resolver),
+- system-proxy command availability for the current OS/desktop environment.
+
+Exit code is non-zero only when a check fails (warnings keep exit code zero).
+
 ### Session Resume
 
 FiVi saves the last working config in `~/.fivi/session.json` and, on restart, tries it first when it is fresh (within 1 hour) before doing full rediscovery.

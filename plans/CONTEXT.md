@@ -489,3 +489,28 @@
     - `go build ./...`
 - **Next task**:
   - `N7` Route/DNS runtime diagnostics (`./fivi doctor`).
+
+## 25) N7 Route/DNS Runtime Diagnostics (2026-03-07)
+- **What changed**:
+  - Added new `./fivi doctor` subcommand to run pre-connect diagnostics without starting discovery/connect loops.
+  - Implemented `internal/doctor` diagnostics package with structured findings (`PASS/WARN/FAIL/SKIP`) and a human-readable report formatter.
+  - Added routing diagnostics to detect parse errors and dual-input precedence ambiguity (`--routing-rules` + `--routing-rules-file`).
+  - Added DNS diagnostics for remote resolver validity and bootstrap loop risks, including explicit failure when DoH/DoT hostname bootstrap resolver is not an IP.
+  - Added system-proxy diagnostics for command availability by OS/desktop environment (Linux GNOME/KDE/unknown, Windows PowerShell, macOS `networksetup` awareness).
+- **Files touched**:
+  - `main.go`
+  - `internal/doctor/doctor.go`
+  - `internal/doctor/doctor_test.go`
+  - `README.md`
+  - `plans/TASKS.md`
+  - `plans/CONTEXT.md`
+- **Behavior impact**:
+  - Users can now run actionable preflight checks (`./fivi doctor`) before long runs to catch common DNS/routing/system-proxy assumption issues early.
+  - `doctor` returns non-zero only when at least one check is `FAIL`; warnings remain non-fatal for operational flexibility.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/doctor`
+  - Build pass:
+    - `go build ./...`
+- **Next task**:
+  - `N8` Binary trust and rollout control.

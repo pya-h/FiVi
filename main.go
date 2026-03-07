@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,9 +19,13 @@ import (
 	"fivi/internal/cleanup"
 	"fivi/internal/config"
 	"fivi/internal/daemon"
+	"fivi/internal/dns"
+	"fivi/internal/doctor"
 	"fivi/internal/engine"
 	"fivi/internal/logx"
 	"fivi/internal/netstats"
+	"fivi/internal/profile"
+	"fivi/internal/routing"
 	"fivi/internal/speedtest"
 	"fivi/internal/ui"
 )
@@ -40,6 +45,11 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "speedtest" {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 		runSpeedTest()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "doctor" {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		runDoctor()
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "install" {
@@ -146,6 +156,59 @@ func runSpeedTest() {
 		os.Exit(1)
 	}
 	fmt.Print(speedtest.FormatResult(result))
+}
+
+func runDoctor() {
+	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+	mode := fs.String("mode", "proxy", "connection mode to validate assumptions for: proxy|tunnel|urltest")
+	profileName := fs.String("profile", "iran", "profile used for default routing rules when no explicit routing rules are provided")
+	routingRulesCSV := fs.String("routing-rules", "", "comma-separated routing rules (e.g. domain:*.ir,domain:!forced.com,range:10.0.0.0/8)")
+	routingRulesFile := fs.String("routing-rules-file", "", "path to routing rules file (one rule per line)")
+	dnsPlain := fs.String("dns", "", "plain DNS server for direct resolution (bootstrap resolver)")
+	dnsDoH := fs.String("doh", "", "DNS-over-HTTPS/TLS resolver for proxy-routed resolution")
+	fs.Parse(os.Args[1:])
+
+	selectedProfile, err := profile.Resolve(*profileName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "doctor failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	rulesInput := "profile-defaults"
+	var rules []routing.Rule
+	var rulesErr error
+	switch {
+	case strings.TrimSpace(*routingRulesFile) != "":
+		rules, rulesErr = routing.LoadFromFile(strings.TrimSpace(*routingRulesFile))
+		rulesInput = "file"
+	case strings.TrimSpace(*routingRulesCSV) != "":
+		rules, rulesErr = routing.ParseCSV(strings.TrimSpace(*routingRulesCSV))
+		rulesInput = "inline"
+	default:
+		rules = routing.ProfileDefaults(selectedProfile.Name)
+	}
+
+	dnsCfg := dns.Default()
+	if strings.TrimSpace(*dnsPlain) != "" {
+		dnsCfg.Direct = strings.TrimSpace(*dnsPlain)
+	}
+	if strings.TrimSpace(*dnsDoH) != "" {
+		dnsCfg.Remote = strings.TrimSpace(*dnsDoH)
+	}
+
+	report := doctor.Diagnose(doctor.Options{
+		Mode:              *mode,
+		DNS:               dnsCfg,
+		RoutingRules:      rules,
+		RoutingRulesErr:   rulesErr,
+		RuleInput:         rulesInput,
+		BothRuleInputsSet: strings.TrimSpace(*routingRulesFile) != "" && strings.TrimSpace(*routingRulesCSV) != "",
+	}, doctor.RuntimeEnvironment())
+
+	fmt.Print(doctor.FormatReport(report))
+	if report.HasFailures() {
+		os.Exit(1)
+	}
 }
 
 func runInstall() {
