@@ -53,13 +53,11 @@ func main() {
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "install" {
-		os.Args = append(os.Args[:1], os.Args[2:]...)
-		runInstall()
+		runInstall(os.Args[2:])
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "update" {
-		os.Args = append(os.Args[:1], os.Args[2:]...)
-		runUpdate()
+		runUpdate(os.Args[2:])
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "daemon" {
@@ -85,7 +83,7 @@ func main() {
 
 	cfg := config.ParseFlags()
 	if cfg.CheckUpdate {
-		runStartupUpdateCheck()
+		runStartupUpdateCheck(cfg)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -105,11 +103,14 @@ func main() {
 	}
 
 	logx.Infof("fivi started with engine=%s, mode=%s, profile=%s, sources=%d, workers=%d", cfg.Engine, cfg.Mode, cfg.Profile, len(cfg.BootstrapSources), cfg.Workers)
-	if err := runWithMode(ctx, cfg, mode); err != nil && !errors.Is(err, context.Canceled) {
+	err := runWithMode(ctx, cfg, mode)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		recordStartupFailure(cfg, err)
 		logx.Errorf("fatal: %v", err)
 		cleanupMgr.Run()
 		os.Exit(1)
 	}
+	recordStartupSuccess(cfg)
 	logx.Infof("fivi stopped")
 }
 
@@ -211,14 +212,16 @@ func runDoctor() {
 	}
 }
 
-func runInstall() {
+func runInstall(args []string) {
 	fs := flag.NewFlagSet("install", flag.ExitOnError)
-	fs.Parse(os.Args[1:])
+	channel := fs.String("binary-channel", "stable", "binary rollout channel: stable|latest")
+	allowlist := fs.String("binary-allowlist", "", "optional comma-separated release tag allowlist")
+	fs.Parse(args)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	installer, err := binmgr.NewInstaller()
+	installer, err := configuredInstaller(*channel, *allowlist)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "install failed: %v\n", err)
 		os.Exit(1)
@@ -235,14 +238,16 @@ func runInstall() {
 	}
 }
 
-func runUpdate() {
+func runUpdate(args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
-	fs.Parse(os.Args[1:])
+	channel := fs.String("binary-channel", "stable", "binary rollout channel: stable|latest")
+	allowlist := fs.String("binary-allowlist", "", "optional comma-separated release tag allowlist")
+	fs.Parse(args)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	installer, err := binmgr.NewInstaller()
+	installer, err := configuredInstaller(*channel, *allowlist)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
 		os.Exit(1)
@@ -275,11 +280,11 @@ func runUpdate() {
 	}
 }
 
-func runStartupUpdateCheck() {
+func runStartupUpdateCheck(cfg config.AppConfig) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	installer, err := binmgr.NewInstaller()
+	installer, err := configuredInstaller(cfg.BinaryChannel, strings.Join(cfg.BinaryTagAllowlist, ","))
 	if err != nil {
 		logx.Warnf("update-check: %v", err)
 		return
@@ -301,6 +306,59 @@ func runStartupUpdateCheck() {
 				logx.Warnf("update-check: %s outdated (%s < %s); run './fivi update'", st.Engine, st.Installed, st.Latest)
 			}
 		}
+	}
+}
+
+func configuredInstaller(channel, allowlist string) (*binmgr.Installer, error) {
+	installer, err := binmgr.NewInstaller()
+	if err != nil {
+		return nil, err
+	}
+	installer.UpdateChannel = strings.ToLower(strings.TrimSpace(channel))
+	installer.TagAllowlist = binmgrTagAllowlist(allowlist)
+	return installer, nil
+}
+
+func binmgrTagAllowlist(csv string) map[string]bool {
+	out := map[string]bool{}
+	for _, part := range strings.Split(csv, ",") {
+		tag := strings.ToLower(strings.TrimSpace(part))
+		if tag == "" {
+			continue
+		}
+		out[tag] = true
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func recordStartupSuccess(cfg config.AppConfig) {
+	installer, err := configuredInstaller(cfg.BinaryChannel, strings.Join(cfg.BinaryTagAllowlist, ","))
+	if err != nil {
+		return
+	}
+	if err := installer.RecordStartupSuccess(context.Background(), cfg.Engine); err != nil {
+		logx.Warnf("binary rollout state update failed: %v", err)
+	}
+}
+
+func recordStartupFailure(cfg config.AppConfig, cause error) {
+	if cfg.BinaryRollbackThreshold == 0 {
+		return
+	}
+	installer, err := configuredInstaller(cfg.BinaryChannel, strings.Join(cfg.BinaryTagAllowlist, ","))
+	if err != nil {
+		return
+	}
+	res, err := installer.RecordStartupFailure(context.Background(), cfg.Engine, cause, cfg.BinaryRollbackThreshold)
+	if err != nil {
+		logx.Warnf("binary rollout failure tracking error: %v", err)
+		return
+	}
+	if res.RolledBack {
+		logx.Warnf("binary rollback applied for engine=%s (%s -> %s) path=%s", res.Engine, res.FromVersion, res.ToVersion, res.Path)
 	}
 }
 
@@ -405,7 +463,7 @@ func runDaemonChild(appArgs []string) {
 	cfg.NoTUI = true
 
 	if cfg.CheckUpdate {
-		runStartupUpdateCheck()
+		runStartupUpdateCheck(cfg)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -415,11 +473,14 @@ func runDaemonChild(appArgs []string) {
 	defer cleanupMgr.Run()
 
 	logx.Infof("daemon mode started pid=%d", os.Getpid())
-	if err := runDaemonWithHealth(ctx, cfg, paths, startedAt); err != nil && !errors.Is(err, context.Canceled) {
+	err = runDaemonWithHealth(ctx, cfg, paths, startedAt)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		recordStartupFailure(cfg, err)
 		logx.Errorf("daemon fatal: %v", err)
 		cleanupMgr.Run()
 		os.Exit(1)
 	}
+	recordStartupSuccess(cfg)
 	logx.Infof("daemon mode stopped")
 }
 

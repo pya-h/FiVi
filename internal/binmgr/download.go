@@ -21,8 +21,10 @@ import (
 )
 
 const (
-	defaultXrayReleasesURL    = "https://api.github.com/repos/XTLS/Xray-core/releases/latest"
-	defaultSingboxReleasesURL = "https://api.github.com/repos/SagerNet/sing-box/releases/latest"
+	defaultXrayReleasesURL     = "https://api.github.com/repos/XTLS/Xray-core/releases/latest"
+	defaultSingboxReleasesURL  = "https://api.github.com/repos/SagerNet/sing-box/releases/latest"
+	defaultXrayReleasesList    = "https://api.github.com/repos/XTLS/Xray-core/releases"
+	defaultSingboxReleasesList = "https://api.github.com/repos/SagerNet/sing-box/releases"
 )
 
 type Asset struct {
@@ -31,16 +33,22 @@ type Asset struct {
 }
 
 type Release struct {
-	TagName string  `json:"tag_name"`
-	Assets  []Asset `json:"assets"`
+	TagName    string  `json:"tag_name"`
+	Prerelease bool    `json:"prerelease"`
+	Draft      bool    `json:"draft"`
+	Assets     []Asset `json:"assets"`
 }
 
 type Installer struct {
-	Client             *http.Client
-	InstallRoot        string
-	XrayReleasesURL    string
-	SingboxReleasesURL string
-	Now                func() time.Time
+	Client                 *http.Client
+	InstallRoot            string
+	XrayReleasesURL        string
+	SingboxReleasesURL     string
+	XrayReleasesListURL    string
+	SingboxReleasesListURL string
+	UpdateChannel          string
+	TagAllowlist           map[string]bool
+	Now                    func() time.Time
 }
 
 type InstallResult struct {
@@ -55,11 +63,14 @@ func NewInstaller() (*Installer, error) {
 		return nil, fmt.Errorf("resolve home dir: %w", err)
 	}
 	return &Installer{
-		Client:             &http.Client{Timeout: 45 * time.Second},
-		InstallRoot:        filepath.Join(home, ".fivi", "bins"),
-		XrayReleasesURL:    defaultXrayReleasesURL,
-		SingboxReleasesURL: defaultSingboxReleasesURL,
-		Now:                time.Now,
+		Client:                 &http.Client{Timeout: 45 * time.Second},
+		InstallRoot:            filepath.Join(home, ".fivi", "bins"),
+		XrayReleasesURL:        defaultXrayReleasesURL,
+		SingboxReleasesURL:     defaultSingboxReleasesURL,
+		XrayReleasesListURL:    defaultXrayReleasesList,
+		SingboxReleasesListURL: defaultSingboxReleasesList,
+		UpdateChannel:          ChannelStable,
+		Now:                    time.Now,
 	}, nil
 }
 
@@ -91,13 +102,15 @@ func (i *Installer) InstallEngine(ctx context.Context, engine string) (InstallRe
 	}
 
 	releaseURL := i.SingboxReleasesURL
+	releaseListURL := i.SingboxReleasesListURL
 	binaryName := "sing-box"
 	if engine == "xray" {
 		releaseURL = i.XrayReleasesURL
+		releaseListURL = i.XrayReleasesListURL
 		binaryName = "xray"
 	}
 
-	rel, err := i.fetchRelease(ctx, releaseURL)
+	rel, err := i.fetchSelectedRelease(ctx, releaseURL, releaseListURL)
 	if err != nil {
 		return InstallResult{}, fmt.Errorf("fetch %s release: %w", engine, err)
 	}
@@ -139,8 +152,37 @@ func (i *Installer) InstallEngine(ctx context.Context, engine string) (InstallRe
 		targetPath += ".exe"
 	}
 
+	state, stateErr := i.loadRolloutState()
+	if stateErr != nil {
+		return InstallResult{}, fmt.Errorf("load rollout state: %w", stateErr)
+	}
+	es := state.engineState(engine)
+	prevVersion := strings.TrimSpace(es.CurrentVersion)
+	backupPath := ""
+	if _, statErr := os.Stat(targetPath); statErr == nil {
+		if detectedVersion, detectErr := detectBinaryVersion(ctx, targetPath); detectErr == nil && strings.TrimSpace(detectedVersion) != "" {
+			prevVersion = detectedVersion
+		}
+		if prevVersion == "" {
+			prevVersion = "unknown"
+		}
+		backupPath = filepath.Join(targetDir, "rollback", strings.TrimPrefix(prevVersion, "v"), filepath.Base(targetPath))
+		if err := backupBinary(targetPath, backupPath); err != nil {
+			return InstallResult{}, fmt.Errorf("backup existing %s binary: %w", engine, err)
+		}
+	}
+
 	if err := extractBinary(archive.Name, archiveBytes, binaryName, targetPath); err != nil {
 		return InstallResult{}, fmt.Errorf("extract %s: %w", archive.Name, err)
+	}
+
+	es.PreviousVersion = prevVersion
+	es.PreviousBackupPath = backupPath
+	es.CurrentVersion = strings.TrimSpace(rel.TagName)
+	es.ConsecutiveStartupFailures = 0
+	state.Engines[engine] = es
+	if err := i.saveRolloutState(state); err != nil {
+		return InstallResult{}, fmt.Errorf("save rollout state: %w", err)
 	}
 
 	return InstallResult{
@@ -151,18 +193,56 @@ func (i *Installer) InstallEngine(ctx context.Context, engine string) (InstallRe
 }
 
 func (i *Installer) fetchRelease(ctx context.Context, url string) (Release, error) {
-	body, err := i.download(ctx, url)
+	releases, err := i.fetchReleases(ctx, url)
 	if err != nil {
 		return Release{}, err
 	}
-	var rel Release
-	if err := json.Unmarshal(body, &rel); err != nil {
-		return Release{}, fmt.Errorf("decode release payload: %w", err)
+	if len(releases) == 0 {
+		return Release{}, errors.New("release has no assets")
 	}
+	rel := releases[0]
 	if len(rel.Assets) == 0 {
 		return Release{}, errors.New("release has no assets")
 	}
 	return rel, nil
+}
+
+func (i *Installer) fetchSelectedRelease(ctx context.Context, fallbackURL, listURL string) (Release, error) {
+	url := strings.TrimSpace(listURL)
+	if url == "" {
+		url = strings.TrimSpace(fallbackURL)
+	}
+	releases, err := i.fetchReleases(ctx, url)
+	if err != nil {
+		return Release{}, err
+	}
+	return selectRelease(releases, i.UpdateChannel, i.TagAllowlist)
+}
+
+func (i *Installer) fetchReleases(ctx context.Context, url string) ([]Release, error) {
+	body, err := i.download(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return nil, errors.New("empty release payload")
+	}
+
+	if trimmed[0] == '[' {
+		var rels []Release
+		if err := json.Unmarshal(trimmed, &rels); err != nil {
+			return nil, fmt.Errorf("decode release list payload: %w", err)
+		}
+		return rels, nil
+	}
+
+	var rel Release
+	if err := json.Unmarshal(trimmed, &rel); err != nil {
+		return nil, fmt.Errorf("decode release payload: %w", err)
+	}
+	return []Release{rel}, nil
 }
 
 func (i *Installer) download(ctx context.Context, url string) ([]byte, error) {

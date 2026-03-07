@@ -514,3 +514,49 @@
     - `go build ./...`
 - **Next task**:
   - `N8` Binary trust and rollout control.
+
+## 26) N8 Binary Trust and Rollout Control (2026-03-07)
+- **What changed**:
+  - Added binary rollout policy support with channel pinning:
+    - `stable` (non-prerelease)
+    - `latest` (can include prereleases)
+  - Added optional exact release tag allowlist filtering for install/update/check-update paths.
+  - Extended release fetching to support GitHub release-list payloads and policy-based release selection.
+  - Added rollout state persistence at `~/.fivi/bins/rollout_state.json` with per-engine metadata:
+    - current version,
+    - last known good version,
+    - previous version backup path,
+    - consecutive startup failure counters.
+  - Added automatic rollback on repeated startup failures:
+    - startup failures increment per-version counter,
+    - once threshold is reached, FiVi restores previous binary backup and resets failure streak.
+  - Added new runtime/config/install/update controls:
+    - `--binary-channel`
+    - `--binary-allowlist`
+    - `--binary-rollback-threshold`
+  - Wired startup success/failure recording into both normal and daemon run paths.
+- **Files touched**:
+  - `internal/binmgr/download.go`
+  - `internal/binmgr/update.go`
+  - `internal/binmgr/policy.go`
+  - `internal/binmgr/policy_test.go`
+  - `internal/binmgr/rollout.go`
+  - `internal/binmgr/rollout_test.go`
+  - `internal/config/config.go`
+  - `internal/config/config_test.go`
+  - `main.go`
+  - `README.md`
+  - `plans/TASKS.md`
+  - `plans/CONTEXT.md`
+- **Behavior impact**:
+  - Binary updates can now be constrained to trusted channels/tags.
+  - Repeated startup breakage after binary changes can self-heal by rolling back to previous known binaries.
+  - `check-update`, `install`, and `update` now respect rollout policy inputs for safer operations.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/binmgr`
+    - `go test ./internal/config`
+  - Build pass:
+    - `go build ./...`
+- **Next task / blocker**:
+  - Backlog milestone sequence is complete through `N8`; next work is a new requested patchset or future backlog expansion.

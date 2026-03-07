@@ -76,10 +76,12 @@ func (i *Installer) checkOrUpdate(ctx context.Context, apply bool) ([]UpdateStat
 
 func (i *Installer) fetchLatestVersion(ctx context.Context, engine string) (string, error) {
 	releaseURL := i.SingboxReleasesURL
+	releaseListURL := i.SingboxReleasesListURL
 	if engine == "xray" {
 		releaseURL = i.XrayReleasesURL
+		releaseListURL = i.XrayReleasesListURL
 	}
-	rel, err := i.fetchRelease(ctx, releaseURL)
+	rel, err := i.fetchSelectedRelease(ctx, releaseURL, releaseListURL)
 	if err != nil {
 		return "", err
 	}

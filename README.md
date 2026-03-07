@@ -125,6 +125,12 @@ FIVI_XRAY_BIN=/usr/local/bin/xray ./fivi
 ```bash
 # Download latest xray-core and sing-box for current OS/arch
 ./fivi install
+
+# Install from latest channel (can include prereleases)
+./fivi install --binary-channel latest
+
+# Restrict install/update to approved tags only
+./fivi install --binary-allowlist v25.3.6,v1.11.0
 ```
 
 `install` downloads release assets from GitHub, verifies SHA256 checksums, extracts binaries, and installs them to:
@@ -140,9 +146,20 @@ FIVI_XRAY_BIN=/usr/local/bin/xray ./fivi
 # Check installed versions and update outdated binaries
 ./fivi update
 
+# Update using latest channel with allowlist guardrail
+./fivi update --binary-channel latest --binary-allowlist v25.3.6,v1.11.0
+
 # Check for available updates on startup (warning only)
 ./fivi --check-update
 ```
+
+Rollout metadata is persisted in:
+
+```text
+~/.fivi/bins/rollout_state.json
+```
+
+FiVi records startup outcomes per engine/version, keeps a previous binary backup on update, and auto-rolls back to the previous version when startup failures exceed `--binary-rollback-threshold`.
 
 ### Route/DNS/System-Proxy Preflight (`doctor`)
 
@@ -760,6 +777,9 @@ FiVi/
 | `--retry-backoff` | `duration` | `14s` (iran) / `8s` (global) | Backoff before restarting discovery |
 | `--schemes` | `CSV` | `vmess,vless,trojan,ss` | Allowed URI schemes to accept |
 | `--check-update` | `bool` | `false` | Check if installed engine binaries are outdated on startup |
+| `--binary-channel` | `string` | `stable` | Binary release channel for install/update/check-update (`stable` or `latest`) |
+| `--binary-allowlist` | `CSV` | `` | Optional exact release tags allowed for binary install/update/check-update |
+| `--binary-rollback-threshold` | `int` | `3` | Auto-rollback after N consecutive startup failures for current binary (`0` disables) |
 
 **Environment variables:**
 

@@ -60,6 +60,9 @@ type AppConfig struct {
 	NetStats                 bool                 // enable real-time network statistics
 	NetStatsIface            string               // override interface for netstats (auto-detect if empty)
 	CheckUpdate              bool                 // check installed engine binaries against latest releases
+	BinaryChannel            string               // binary release channel: stable|latest
+	BinaryTagAllowlist       []string             // optional exact tag allowlist for binary rollout
+	BinaryRollbackThreshold  int                  // rollback after N consecutive startup failures (0 disables)
 	OnlySchemes              map[string]bool
 }
 
@@ -121,6 +124,9 @@ func ParseFlags() AppConfig {
 		netStats                 = flag.Bool("stats", false, "enable real-time network statistics in TUI (reads /proc/net/dev)")
 		netStatsIface            = flag.String("stats-iface", "", "network interface for stats (auto-detected if empty)")
 		checkUpdate              = flag.Bool("check-update", false, "check whether engine binaries are outdated on startup")
+		binaryChannel            = flag.String("binary-channel", "stable", "binary rollout channel: stable|latest")
+		binaryAllowlist          = flag.String("binary-allowlist", "", "optional comma-separated release tag allowlist for install/update/check-update")
+		binaryRollbackThreshold  = flag.Int("binary-rollback-threshold", 3, "auto-rollback threshold after consecutive startup failures for current binary version (0 disables)")
 		schemesCSV               = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
 	flag.Parse()
@@ -267,6 +273,9 @@ func ParseFlags() AppConfig {
 		NetStats:                 *netStats,
 		NetStatsIface:            strings.TrimSpace(*netStatsIface),
 		CheckUpdate:              *checkUpdate,
+		BinaryChannel:            normalizeBinaryChannel(*binaryChannel),
+		BinaryTagAllowlist:       splitCSV(*binaryAllowlist),
+		BinaryRollbackThreshold:  *binaryRollbackThreshold,
 		OnlySchemes:              allowed,
 	}
 }
@@ -384,6 +393,16 @@ func normalizeMode(v string) string {
 		return v
 	default:
 		return "proxy"
+	}
+}
+
+func normalizeBinaryChannel(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	switch v {
+	case "latest":
+		return "latest"
+	default:
+		return "stable"
 	}
 }
 

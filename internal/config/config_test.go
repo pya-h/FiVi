@@ -60,6 +60,25 @@ func TestNormalizeMode(t *testing.T) {
 	}
 }
 
+func TestNormalizeBinaryChannel(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "stable", want: "stable"},
+		{in: "latest", want: "latest"},
+		{in: "LATEST", want: "latest"},
+		{in: "invalid", want: "stable"},
+		{in: "", want: "stable"},
+	}
+
+	for _, tc := range tests {
+		if got := normalizeBinaryChannel(tc.in); got != tc.want {
+			t.Fatalf("normalizeBinaryChannel(%q)=%q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestResolveBinaryEnvOverride(t *testing.T) {
 	const key = "FIVI_SINGBOX_BIN"
 	original, hadOriginal := os.LookupEnv(key)

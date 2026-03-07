@@ -416,7 +416,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Include checks for loop risks, unresolved DoH bootstrap, and system-proxy command availability.
 - Done when: users get actionable preflight output before starting a long discovery run.
 
-67. [ ] `N8` Binary trust and rollout control.
+67. [x] `N8` Binary trust and rollout control.
 - Add pinned-version channel support (`stable`, `latest`) and optional allowlist for release tags.
 - Persist last known good binary version and rollback on repeated startup failures.
 - Done when: binary update failures can be auto-mitigated without manual reinstall.
