@@ -258,9 +258,17 @@ func runDaemon(args []string) {
 		fmt.Fprintf(os.Stderr, "daemon failed: %v\n", err)
 		os.Exit(1)
 	}
-	if pid, err := daemon.ReadPID(paths.PIDFile); err == nil && daemon.ProcessRunning(pid) {
-		fmt.Fprintf(os.Stderr, "daemon already running with pid %d\n", pid)
-		os.Exit(1)
+	if pid, err := daemon.ReadPID(paths.PIDFile); err == nil {
+		switch {
+		case daemon.ProcessLooksLikeFiViDaemon(pid):
+			fmt.Fprintf(os.Stderr, "daemon already running with pid %d\n", pid)
+			os.Exit(1)
+		case daemon.ProcessRunning(pid):
+			fmt.Fprintf(os.Stderr, "refusing to reuse pid file: pid %d belongs to another running process\n", pid)
+			os.Exit(1)
+		default:
+			daemon.RemovePID(paths.PIDFile)
+		}
 	}
 
 	exe, err := os.Executable()
@@ -343,6 +351,15 @@ func runStop() {
 		fmt.Fprintf(os.Stderr, "daemon is not running\n")
 		return
 	}
+	if !daemon.ProcessRunning(pid) {
+		daemon.RemovePID(paths.PIDFile)
+		fmt.Printf("daemon not running (stale pid %d removed)\n", pid)
+		return
+	}
+	if daemon.ProcessRunning(pid) && !daemon.ProcessLooksLikeFiViDaemon(pid) {
+		fmt.Fprintf(os.Stderr, "refusing to stop pid %d: not a FiVi daemon process\n", pid)
+		os.Exit(1)
+	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
@@ -376,9 +393,13 @@ func runStatus() {
 		fmt.Println("daemon not running")
 		return
 	}
-	if daemon.ProcessRunning(pid) {
+	if daemon.ProcessLooksLikeFiViDaemon(pid) {
 		fmt.Printf("daemon running pid=%d log=%s\n", pid, paths.LogFile)
 		return
+	}
+	if daemon.ProcessRunning(pid) {
+		fmt.Printf("daemon pid file points to non-FiVi process pid=%d (manual cleanup may be required)\n", pid)
+		os.Exit(1)
 	}
 	daemon.RemovePID(paths.PIDFile)
 	fmt.Printf("daemon not running (stale pid %s removed)\n", strconv.Itoa(pid))

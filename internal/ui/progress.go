@@ -72,6 +72,8 @@ func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEven
 					logger("phase: monitoring %s (socks=%s http=%s)", update.NodeName, update.SocksAddr, update.HTTPAddr)
 				case engine.PhaseFailover:
 					logger("phase: failover triggered")
+				case engine.PhaseWarmFailover:
+					logger("phase: warm failover (trying pre-validated standbys)")
 				}
 			}
 			if update.Phase == engine.PhaseMonitoring && update.Ping > 0 {

@@ -223,3 +223,37 @@
     - `go build ./...`
 - **Next task**:
   - Milestone M is complete; next work should be defined in a new milestone set or backlog extension.
+
+## 15) Full-Review Pass + Hardening (2026-03-07)
+- **What changed**:
+  - Ran a full implementation review from milestones A→M and fixed remaining daemon lifecycle edge cases.
+  - Daemon safety hardening:
+    - Added process identity checks to avoid operating on non-FiVi reused PIDs (`ProcessLooksLikeFiViDaemon`).
+    - Fixed `stop` behavior for stale/dead PID files (now removes stale PID and exits cleanly instead of signaling dead PID).
+    - Added Linux cmdline-based process identity detection (`/proc/<pid>/cmdline`) with non-Linux fallback.
+  - UI/log visibility improvements:
+    - Added explicit warm-failover phase log line in `--no-tui` reporter.
+    - Added warm-failover label in discovery TUI connection status panel.
+    - Added regression-style UI test coverage for warm-failover phase logging.
+  - Documentation consistency fixes:
+    - Corrected README defaults to match current code (`--mode` default `proxy`, `--max-candidates` default `0`, `--startup-timeout` default `8s`).
+  - Planning updates:
+    - Added post-M backlog section (N1–N8) for future VPN/engine/mode/UI/reliability enhancements.
+- **Files touched**:
+  - `main.go`
+  - `internal/daemon/daemon.go`
+  - `internal/daemon/process_linux.go`
+  - `internal/daemon/process_other.go`
+  - `internal/ui/progress.go`
+  - `internal/ui/progress_test.go`
+  - `internal/ui/dashboard.go`
+  - `README.md`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Safer daemon control: `daemon/stop/status` now avoid accidental interaction with unrelated processes.
+  - Better runtime visibility during standby transitions (warm failover) in both TUI and log mode.
+  - User docs now align with actual runtime defaults.
+- **Validation results**:
+  - Full suite and build pass:
+    - `go test ./...`
+    - `go build ./...`

@@ -485,7 +485,7 @@ FIVI_SINGBOX_BIN=/path/to/sing-box
 # Worker concurrency (default: CPU cores × 3, minimum 10)
 --workers 24
 
-# Maximum unique candidates to test per round (default: 350)
+# Maximum unique candidates to test per round (default: 0 = no limit)
 --max-candidates 500
 
 # Number of top-ranked results to display (default: 5)
@@ -568,7 +568,7 @@ FIVI_SINGBOX_BIN=/path/to/sing-box
 ```bash
 ./fivi
 ```
-Uses default iran profile, xray engine, tests 350 candidates with 10+ workers, connects the best node on `127.0.0.1:10808` (SOCKS5) and `127.0.0.1:10809` (HTTP).
+Uses default iran profile, xray engine, tests all unique candidates (no cap by default) with 10+ workers, connects the best node on `127.0.0.1:10808` (SOCKS5) and `127.0.0.1:10809` (HTTP).
 
 ### Route all system traffic through a tunnel
 
@@ -656,17 +656,17 @@ FiVi/
 |---|---|---|---|
 | `--profile` | `string` | `iran` | Operational profile (`iran` or `global`) |
 | `--engine` | `string` | `xray` | Engine backend (`xray` or `singbox`) |
-| `--mode` | `string` | `tunnel` | Connection mode (`proxy` or `tunnel`) |
+| `--mode` | `string` | `proxy` | Connection mode (`proxy` or `tunnel`) |
 | `--xray-bin` | `string` | auto-resolved | Path to xray binary |
 | `--singbox-bin` | `string` | auto-resolved | Path to sing-box binary |
 | `--socks-addr` | `string` | `127.0.0.1:10808` | SOCKS5 listen address |
 | `--http-addr` | `string` | `127.0.0.1:10809` | HTTP proxy listen address |
 | `--no-tui` | `bool` | `false` | Disable interactive TUI, use plain log output |
 | `--workers` | `int` | `CPU×3` (min 10) | Parallel candidate testing workers |
-| `--max-candidates` | `int` | `350` | Max unique candidates to test per round |
+| `--max-candidates` | `int` | `0` | Max unique candidates to test per round (`0` = no limit) |
 | `--top` | `int` | `5` | Number of top-ranked results to display |
 | `--candidate-timeout` | `duration` | `24s` | Total timeout budget per candidate (all attempts) |
-| `--startup-timeout` | `duration` | `4s` | Max wait for engine listeners to become ready |
+| `--startup-timeout` | `duration` | `8s` | Max wait for engine listeners to become ready |
 | `--fetch-timeout` | `duration` | `25s` | Timeout per source URL fetch |
 | `--probe-timeout` | `duration` | `8s` (iran) / `5s` (global) | Timeout per individual probe request |
 | `--min-success` | `int` | `2` (iran) / `1` (global) | Minimum successful probes to qualify a node |

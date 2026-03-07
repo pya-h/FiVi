@@ -85,3 +85,41 @@ func TestRunLogProgressReporterEmitsSnapshots(t *testing.T) {
 		t.Fatalf("expected at least one snapshot log")
 	}
 }
+
+func TestRunLogProgressReporterLogsWarmFailoverPhase(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := make(chan engine.WorkerEvent)
+	status := make(chan engine.StatusUpdate, 1)
+	logs := make([]string, 0, 2)
+	runDone := make(chan struct{})
+
+	go func() {
+		runLogProgressReporter(ctx, events, status, 100*time.Millisecond, nil, func(format string, args ...any) {
+			logs = append(logs, fmt.Sprintf(format, args...))
+		})
+		close(runDone)
+	}()
+
+	status <- engine.StatusUpdate{Phase: engine.PhaseWarmFailover}
+	close(status)
+	close(events)
+
+	select {
+	case <-runDone:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatalf("reporter did not exit")
+	}
+
+	found := false
+	for _, line := range logs {
+		if strings.Contains(line, "warm failover") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected warm failover log line, got=%v", logs)
+	}
+}

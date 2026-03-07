@@ -374,3 +374,49 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - `./fivi status` reads PID file and checks if daemon is running.
 - Output: daemon scaffolding in `main.go`, PID management, log file rotation.
 - Done when: `./fivi daemon` runs in background, `./fivi stop` stops it.
+
+---
+
+## Post-M Backlog (Proposed)
+
+60. [ ] `N1` Daemon hardening and health visibility.
+- Add daemon command support for `restart` and `logs --tail N`.
+- Add startup health marker in PID metadata to distinguish "started" vs "ready".
+- Add periodic daemon heartbeat file (`~/.fivi/daemon.health.json`) with last successful probe and active node.
+- Done when: users can inspect daemon health without attaching interactive UI.
+
+61. [ ] `N2` Adaptive probe target strategy.
+- Add rolling probe-target quality scoring and auto-prioritize targets that best separate good/bad nodes.
+- Keep profile-required targets pinned while adapting optional targets.
+- Done when: average time-to-first-working-node improves without reducing required-target strictness.
+
+62. [ ] `N3` Engine expansion feasibility: `hysteria2` adapter.
+- Evaluate and optionally implement `--engine hysteria2` under existing adapter abstraction.
+- Support proxy mode first; tunnel optional if low complexity.
+- Done when: discovery/connect/monitor works with hysteria2 or feasibility is explicitly documented as deferred.
+
+63. [ ] `N4` Additional mode: `urltest` continuous benchmarking mode.
+- New mode where FiVi continuously benchmarks top candidates in background and switches proactively before degradation.
+- Keep current mode semantics unchanged.
+- Done when: active node can be preemptively switched based on stable score drop thresholds.
+
+64. [ ] `N5` UI clarity improvements for long runs.
+- Add explicit "why failed" rollup in TUI monitoring view (top failure reasons over last N checks).
+- Add compact source health panel in discovery view (success/cooldown/yield top offenders).
+- Mirror key TUI insights in `--no-tui` snapshots.
+- Done when: users can diagnose stalls/degradation without reading verbose logs.
+
+65. [ ] `N6` Connection quality guardrails.
+- Add optional latency/jitter floors for active session, not just initial candidate qualification.
+- Trigger soft failover before hard outage when metrics cross configured thresholds.
+- Done when: severe quality drops trigger earlier failover with fewer user-visible outages.
+
+66. [ ] `N7` Route/DNS runtime diagnostics.
+- Add `./fivi doctor` subcommand to validate DNS/routing/proxy assumptions pre-connect.
+- Include checks for loop risks, unresolved DoH bootstrap, and system-proxy command availability.
+- Done when: users get actionable preflight output before starting a long discovery run.
+
+67. [ ] `N8` Binary trust and rollout control.
+- Add pinned-version channel support (`stable`, `latest`) and optional allowlist for release tags.
+- Persist last known good binary version and rollback on repeated startup failures.
+- Done when: binary update failures can be auto-mitigated without manual reinstall.

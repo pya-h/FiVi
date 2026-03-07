@@ -271,10 +271,12 @@ func (m dashboardModel) viewDiscovery() []string {
 		labelStyle.Render("Stages:"), formatActiveStages(m.progress.active)))
 
 	// Connecting node.
-	if m.phase == engine.PhaseConnecting || m.phase == engine.PhaseFailover {
+	if m.phase == engine.PhaseConnecting || m.phase == engine.PhaseFailover || m.phase == engine.PhaseWarmFailover {
 		label := "Connecting:"
 		if m.phase == engine.PhaseFailover {
 			label = "Failover:"
+		} else if m.phase == engine.PhaseWarmFailover {
+			label = "Warm failover:"
 		}
 		lines = append(lines, fmt.Sprintf(" %s %s",
 			yellowStyle.Render(label), m.connectedNode))
