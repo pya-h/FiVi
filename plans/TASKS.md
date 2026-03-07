@@ -442,3 +442,15 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Add `--probable-latency-threshold` to control which low-latency probe-failed candidates are promoted to probable.
 - Default threshold: `450ms`; `0` disables this promotion path.
 - Done when: users can tune/disable latency-based probable promotion without code changes.
+
+## Extra Steps (Post-Completion Improvements)
+
+72. [x] `X1` Add opt-in runtime profiler hooks.
+- Add local `pprof` runtime profiling server with safe defaults and graceful shutdown.
+- Output: `internal/profiler`, runtime wiring in `main.go`.
+- Done when: `--pprof` exposes `/debug/pprof/` and closes cleanly on exit.
+
+73. [x] `X2` Track extra improvements in planning artifacts.
+- Record post-completion improvements as explicit tasks and keep them checked.
+- Output: `plans/TASKS.md` and `plans/CONTEXT.md` update entries.
+- Done when: extra steps are visible as completed and traceable.

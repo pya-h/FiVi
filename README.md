@@ -181,6 +181,20 @@ Run pre-connect diagnostics before a long discovery session:
 
 Exit code is non-zero only when a check fails (warnings keep exit code zero).
 
+### Runtime Profiling (`pprof`)
+
+Enable an opt-in local profiler server for performance diagnosis:
+
+```bash
+# Enable pprof on default localhost port
+./fivi --pprof
+
+# Custom pprof listen address
+./fivi --pprof --pprof-addr 127.0.0.1:7070
+```
+
+When enabled, FiVi exposes standard Go pprof endpoints (for example `/debug/pprof/`) and shuts the profiler down on process exit.
+
 ### Session Resume
 
 FiVi saves the last working config in `~/.fivi/session.json` and, on restart, tries it first when it is fresh (within 1 hour) before doing full rediscovery.
@@ -786,6 +800,8 @@ FiVi/
 | `--binary-channel` | `string` | `stable` | Binary release channel for install/update/check-update (`stable` or `latest`) |
 | `--binary-allowlist` | `CSV` | `` | Optional exact release tags allowed for binary install/update/check-update |
 | `--binary-rollback-threshold` | `int` | `3` | Auto-rollback after N consecutive startup failures for current binary (`0` disables) |
+| `--pprof` | `bool` | `false` | Enable local pprof runtime profiling server |
+| `--pprof-addr` | `string` | `127.0.0.1:6060` | Listen address for pprof server |
 
 **Environment variables:**
 

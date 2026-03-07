@@ -624,3 +624,62 @@
     - `go build ./...`
 - **Next task / blocker**:
   - No open milestone blocker in `TASKS.md`; next valuable step is profile-guided performance tuning (`pprof`) on discovery worker throughput.
+
+## 29) URLTest Responsiveness Optimization (2026-03-07)
+- **What changed**:
+  - Improved URLTest monitoring loop responsiveness by bounding alternative-candidate benchmark timeout:
+    - added `effectiveURLTestBenchmarkTimeout()`
+    - benchmark duration now uses `min(--candidate-timeout, 6s)` with `6s` default cap.
+  - This prevents prolonged benchmark calls from delaying monitor ticks and proactive switching decisions when candidate timeout is configured very high.
+  - Minor cleanup in reconnect flow: removed redundant local state (`reconnected`) while preserving behavior/log output.
+- **Files touched**:
+  - `internal/engine/engine.go`
+  - `internal/engine/monitor_timeout_test.go`
+  - `plans/CONTEXT.md`
+- **Behavior impact**:
+  - Faster/steadier monitoring cadence in URLTest mode under large candidate-timeout settings.
+  - Better failover/switch responsiveness during degradation windows.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/engine`
+    - `go test ./internal/doctor`
+  - Full suite/static/build pass:
+    - `go test ./...`
+    - `go vet ./...`
+    - `go build ./...`
+- **Next task / blocker**:
+  - Backlog complete in `TASKS.md`; remaining improvements are continuous tuning and optional profiling instrumentation.
+
+## 30) Extra Step X1/X2: Profiling Hooks + Task Traceability (2026-03-07)
+- **What changed**:
+  - Added opt-in runtime profiling support via local pprof server:
+    - new `internal/profiler` package,
+    - lifecycle-managed startup/shutdown with context-driven cleanup,
+    - default safe bind `127.0.0.1:6060`.
+  - Added runtime flags and wiring:
+    - `--pprof`
+    - `--pprof-addr`
+    - startup integration in both normal and daemon execution paths.
+  - Added profiler unit tests validating endpoint serving and address normalization.
+  - Updated README with pprof usage and flags.
+  - Added explicit extra-step entries in `plans/TASKS.md` and marked them complete (`X1`, `X2`) per request.
+- **Files touched**:
+  - `internal/profiler/profiler.go`
+  - `internal/profiler/profiler_test.go`
+  - `internal/config/config.go`
+  - `main.go`
+  - `README.md`
+  - `plans/TASKS.md`
+  - `plans/CONTEXT.md`
+- **Behavior impact**:
+  - Operators can profile runtime hotspots in production-like runs without code changes.
+  - Planning artifacts now explicitly capture and tick extra post-task improvements for better traceability.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/profiler`
+  - Full suite/static/build pass:
+    - `go test ./...`
+    - `go vet ./...`
+    - `go build ./...`
+- **Next task / blocker**:
+  - No mandatory backlog blocker; optional next step is adding profile snapshot export commands for non-interactive diagnostics.

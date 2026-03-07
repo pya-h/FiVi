@@ -764,15 +764,16 @@ func isListeningAddr(addr string) bool {
 }
 
 const (
-	autoReconnectMaxAttempts  = 3
-	autoReconnectBaseBackoff  = 2 * time.Second
-	autoReconnectMaxBackoff   = 30 * time.Second
-	maxSpeedSampleTimeout     = 4 * time.Second
-	urltestStableChecks       = 2
-	urltestBenchmarkEveryTick = 3
-	urltestBenchmarkTopN      = 3
-	urltestDropThreshold      = 0.35
-	urltestSwitchGain         = 0.15
+	autoReconnectMaxAttempts   = 3
+	autoReconnectBaseBackoff   = 2 * time.Second
+	autoReconnectMaxBackoff    = 30 * time.Second
+	maxSpeedSampleTimeout      = 4 * time.Second
+	maxURLTestBenchmarkTimeout = 6 * time.Second
+	urltestStableChecks        = 2
+	urltestBenchmarkEveryTick  = 3
+	urltestBenchmarkTopN       = 3
+	urltestDropThreshold       = 0.35
+	urltestSwitchGain          = 0.15
 )
 
 func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranked, status chan<- StatusUpdate, adapter engines.Adapter, engineBin string) error {
@@ -787,7 +788,6 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 		// Auto-reconnect: retry the same config with exponential backoff
 		// before moving to the next ranked candidate.
 		if cfg.AutoReconnect {
-			reconnected := false
 			backoff := autoReconnectBaseBackoff
 			for attempt := 1; attempt <= autoReconnectMaxAttempts; attempt++ {
 				logx.Infof("auto-reconnect attempt %d/%d for %s (backoff=%s)", attempt, autoReconnectMaxAttempts, displayName(cand), backoff)
@@ -807,9 +807,7 @@ func connectAndMonitor(ctx context.Context, cfg config.AppConfig, ranked []Ranke
 					backoff = autoReconnectMaxBackoff
 				}
 			}
-			if !reconnected {
-				logx.Warnf("auto-reconnect exhausted for %s, trying next candidate", displayName(cand))
-			}
+			logx.Warnf("auto-reconnect exhausted for %s, trying next candidate", displayName(cand))
 		}
 
 		emitStatus(status, StatusUpdate{
@@ -1199,6 +1197,7 @@ func benchmarkAlternatives(ctx context.Context, cfg config.AppConfig, ranked []R
 	if len(ranked) == 0 || adapter == nil {
 		return 0, "", false
 	}
+	benchTimeout := effectiveURLTestBenchmarkTimeout(cfg)
 	maxBench := urltestBenchmarkTopN
 	benchCount := 0
 	best := 0.0
@@ -1208,10 +1207,7 @@ func benchmarkAlternatives(ctx context.Context, cfg config.AppConfig, ranked []R
 			continue
 		}
 		benchCount++
-		benchCtx, cancel := context.WithTimeout(ctx, cfg.CandidateTimeout)
-		if cfg.CandidateTimeout <= 0 {
-			benchCtx, cancel = context.WithTimeout(ctx, 12*time.Second)
-		}
+		benchCtx, cancel := context.WithTimeout(ctx, benchTimeout)
 		outcome := testOne(benchCtx, cfg, parser.Candidate{Raw: ranked[i].Raw, Scheme: ranked[i].Scheme}, 0, nil, adapter, engineBin)
 		cancel()
 		if outcome.Ranked == nil {
@@ -1225,6 +1221,16 @@ func benchmarkAlternatives(ctx context.Context, cfg config.AppConfig, ranked []R
 		}
 	}
 	return best, bestDisplay, ok
+}
+
+func effectiveURLTestBenchmarkTimeout(cfg config.AppConfig) time.Duration {
+	if cfg.CandidateTimeout <= 0 {
+		return maxURLTestBenchmarkTimeout
+	}
+	if cfg.CandidateTimeout > maxURLTestBenchmarkTimeout {
+		return maxURLTestBenchmarkTimeout
+	}
+	return cfg.CandidateTimeout
 }
 
 func startCandidate(ctx context.Context, cfg config.AppConfig, rawURI, socksAddr, httpAddr string, adapter engines.Adapter, engineBin string) (engines.Instance, probe.Result, float64, error) {

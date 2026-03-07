@@ -25,6 +25,7 @@ import (
 	"fivi/internal/logx"
 	"fivi/internal/netstats"
 	"fivi/internal/profile"
+	"fivi/internal/profiler"
 	"fivi/internal/routing"
 	"fivi/internal/speedtest"
 	"fivi/internal/ui"
@@ -87,6 +88,7 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	startPProfIfEnabled(ctx, cfg)
 
 	// Ensure cleanup runs on any exit path.
 	engine.SetCleanupManager(cleanupMgr)
@@ -470,6 +472,7 @@ func runDaemonChild(appArgs []string) {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	startPProfIfEnabled(ctx, cfg)
 
 	engine.SetCleanupManager(cleanupMgr)
 	defer cleanupMgr.Run()
@@ -486,6 +489,23 @@ func runDaemonChild(appArgs []string) {
 		recordStartupSuccess(cfg)
 	}
 	logx.Infof("daemon mode stopped")
+}
+
+func startPProfIfEnabled(ctx context.Context, cfg config.AppConfig) {
+	if !cfg.EnablePProf {
+		return
+	}
+	srv, err := profiler.Start(ctx, cfg.PProfAddr)
+	if err != nil {
+		logx.Warnf("pprof: failed to start: %v", err)
+		return
+	}
+	cleanupMgr.Register("stop pprof server", func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Stop(shutdownCtx)
+	})
+	logx.Infof("pprof enabled at http://%s/debug/pprof/", srv.Addr)
 }
 
 func runDaemonWithHealth(ctx context.Context, cfg config.AppConfig, paths daemon.Paths, startedAt time.Time) error {

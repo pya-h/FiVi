@@ -27,3 +27,24 @@ func TestEffectiveSpeedSampleTimeoutDefaultsWhenUnset(t *testing.T) {
 		t.Fatalf("effectiveSpeedSampleTimeout=%s want=%s", got, maxSpeedSampleTimeout)
 	}
 }
+
+func TestEffectiveURLTestBenchmarkTimeoutCapsLargeCandidateTimeout(t *testing.T) {
+	cfg := config.AppConfig{CandidateTimeout: 20 * time.Second}
+	if got := effectiveURLTestBenchmarkTimeout(cfg); got != maxURLTestBenchmarkTimeout {
+		t.Fatalf("effectiveURLTestBenchmarkTimeout=%s want=%s", got, maxURLTestBenchmarkTimeout)
+	}
+}
+
+func TestEffectiveURLTestBenchmarkTimeoutPreservesSmallCandidateTimeout(t *testing.T) {
+	cfg := config.AppConfig{CandidateTimeout: 900 * time.Millisecond}
+	if got := effectiveURLTestBenchmarkTimeout(cfg); got != 900*time.Millisecond {
+		t.Fatalf("effectiveURLTestBenchmarkTimeout=%s want=900ms", got)
+	}
+}
+
+func TestEffectiveURLTestBenchmarkTimeoutDefaultsWhenUnset(t *testing.T) {
+	cfg := config.AppConfig{}
+	if got := effectiveURLTestBenchmarkTimeout(cfg); got != maxURLTestBenchmarkTimeout {
+		t.Fatalf("effectiveURLTestBenchmarkTimeout=%s want=%s", got, maxURLTestBenchmarkTimeout)
+	}
+}

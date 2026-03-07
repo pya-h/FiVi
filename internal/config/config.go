@@ -63,6 +63,8 @@ type AppConfig struct {
 	BinaryChannel            string               // binary release channel: stable|latest
 	BinaryTagAllowlist       []string             // optional exact tag allowlist for binary rollout
 	BinaryRollbackThreshold  int                  // rollback after N consecutive startup failures (0 disables)
+	EnablePProf              bool                 // enable pprof server for runtime profiling
+	PProfAddr                string               // pprof listen addr (default 127.0.0.1:6060)
 	OnlySchemes              map[string]bool
 }
 
@@ -127,6 +129,8 @@ func ParseFlags() AppConfig {
 		binaryChannel            = flag.String("binary-channel", "stable", "binary rollout channel: stable|latest")
 		binaryAllowlist          = flag.String("binary-allowlist", "", "optional comma-separated release tag allowlist for install/update/check-update")
 		binaryRollbackThreshold  = flag.Int("binary-rollback-threshold", 3, "auto-rollback threshold after consecutive startup failures for current binary version (0 disables)")
+		pprofEnabled             = flag.Bool("pprof", false, "enable pprof runtime profiling server")
+		pprofAddr                = flag.String("pprof-addr", "127.0.0.1:6060", "pprof listen address")
 		schemesCSV               = flag.String("schemes", "vmess,vless,trojan,ss", "allowed URI schemes")
 	)
 	flag.Parse()
@@ -276,6 +280,8 @@ func ParseFlags() AppConfig {
 		BinaryChannel:            normalizeBinaryChannel(*binaryChannel),
 		BinaryTagAllowlist:       splitCSV(*binaryAllowlist),
 		BinaryRollbackThreshold:  *binaryRollbackThreshold,
+		EnablePProf:              *pprofEnabled,
+		PProfAddr:                strings.TrimSpace(*pprofAddr),
 		OnlySchemes:              allowed,
 	}
 }
