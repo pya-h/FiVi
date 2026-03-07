@@ -69,6 +69,7 @@ type candidateOutcome struct {
 	Ranked   *Ranked
 	Probable *ProbableCandidate
 	Reason   FailureReason
+	Targets  []probe.TargetResult
 }
 
 type validationSummary struct {
@@ -77,11 +78,20 @@ type validationSummary struct {
 	FailureCounts map[FailureReason]int
 	Processed     int
 	Failed        int
+	TargetQuality map[string]targetQuality
+}
+
+type targetQuality struct {
+	GoodTotal int
+	GoodPass  int
+	BadTotal  int
+	BadPass   int
 }
 
 type discoveryResult struct {
 	Working  []Ranked
 	Probable []ProbableCandidate
+	Targets  []string
 }
 
 var (
@@ -214,6 +224,10 @@ func RunWithAdapter(ctx context.Context, cfg config.AppConfig, events chan<- Wor
 			continue
 		}
 		ranked := discovered.Working
+		if len(discovered.Targets) > 0 {
+			cfg.Targets = discovered.Targets
+			logx.Infof("adaptive targets: %s", strings.Join(cfg.Targets, ", "))
+		}
 		if len(ranked) == 0 {
 			if len(discovered.Probable) > 0 {
 				fallback := rankedFromProbable(discovered.Probable)
@@ -371,11 +385,12 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	writeAllConfigs(cands)
 
 	validation := validateCandidates(ctx, cfg, cands, events, adapter, engineBin, candLatency)
+	adaptedTargets := reorderProbeTargets(cfg.Targets, cfg.RequiredTargets, validation.TargetQuality)
 	if len(validation.Working) == 0 {
 		if err := writeCandidateBuckets(nil, validation.Probable); err != nil {
 			logx.Warnf("failed to write candidate buckets: %v", err)
 		}
-		return discoveryResult{Working: nil, Probable: validation.Probable}, nil
+		return discoveryResult{Working: nil, Probable: validation.Probable, Targets: adaptedTargets}, nil
 	}
 
 	ranked := validation.Working
@@ -395,7 +410,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 		logx.Warnf("failed to write candidate buckets: %v", err)
 	}
 	printTopCandidates(ranked, cfg.TopCount)
-	return discoveryResult{Working: ranked, Probable: validation.Probable}, nil
+	return discoveryResult{Working: ranked, Probable: validation.Probable, Targets: adaptedTargets}, nil
 }
 
 func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parser.Candidate, events chan<- WorkerEvent, adapter engines.Adapter, engineBin string, latencies map[string]time.Duration) validationSummary {
@@ -466,14 +481,17 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 		Working:       make([]Ranked, 0, len(cands)),
 		Probable:      make([]ProbableCandidate, 0, len(cands)),
 		FailureCounts: make(map[FailureReason]int),
+		TargetQuality: make(map[string]targetQuality, len(cfg.Targets)),
 	}
 	for outcome := range outcomes {
 		summary.Processed++
 		switch {
 		case outcome.Ranked != nil:
 			summary.Working = append(summary.Working, *outcome.Ranked)
+			observeTargetQuality(summary.TargetQuality, outcome.Targets, true)
 		case outcome.Probable != nil:
 			summary.Probable = append(summary.Probable, *outcome.Probable)
+			observeTargetQuality(summary.TargetQuality, outcome.Targets, false)
 		default:
 			reason := outcome.Reason
 			if reason == "" {
@@ -481,6 +499,7 @@ func validateCandidates(ctx context.Context, cfg config.AppConfig, cands []parse
 			}
 			summary.Failed++
 			summary.FailureCounts[reason]++
+			observeTargetQuality(summary.TargetQuality, outcome.Targets, false)
 		}
 	}
 
@@ -566,7 +585,7 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 			}
 			emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusOK, attempt, "", nil, probeStarted)
 			emitDone(WorkerStatusOK, "", nil, attempt)
-			return candidateOutcome{Raw: c.Raw, Ranked: &ranked}
+			return candidateOutcome{Raw: c.Raw, Ranked: &ranked, Targets: res.Targets}
 		}
 		if res.Successes > 0 {
 			probable := ProbableCandidate{
@@ -580,10 +599,15 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 			}
 			emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusFailed, attempt, FailureReasonProbePartial, nil, probeStarted)
 			emitDone(WorkerStatusProbable, FailureReasonProbePartial, nil, attempt)
-			return candidateOutcome{Raw: c.Raw, Probable: &probable, Reason: FailureReasonProbePartial}
+			return candidateOutcome{Raw: c.Raw, Probable: &probable, Reason: FailureReasonProbePartial, Targets: res.Targets}
 		}
 		lastReason = FailureReasonProbeFailed
+		lastTargets := res.Targets
 		emitStageEvent(events, workerID, c.Raw, WorkerStageProbe, WorkerStatusFailed, attempt, FailureReasonProbeFailed, nil, probeStarted)
+		if attempt == 3 {
+			emitDone(WorkerStatusFailed, lastReason, nil, 3)
+			return candidateOutcome{Raw: c.Raw, Reason: lastReason, Targets: lastTargets}
+		}
 	}
 
 	if candidateCtx.Err() != nil {
@@ -593,6 +617,95 @@ func testOne(ctx context.Context, cfg config.AppConfig, c parser.Candidate, work
 	}
 	emitDone(WorkerStatusFailed, lastReason, nil, 3)
 	return candidateOutcome{Raw: c.Raw, Reason: lastReason}
+}
+
+func observeTargetQuality(quality map[string]targetQuality, targets []probe.TargetResult, good bool) {
+	if len(targets) == 0 {
+		return
+	}
+	for _, t := range targets {
+		q := quality[t.URL]
+		if good {
+			q.GoodTotal++
+			if t.OK {
+				q.GoodPass++
+			}
+		} else {
+			q.BadTotal++
+			if t.OK {
+				q.BadPass++
+			}
+		}
+		quality[t.URL] = q
+	}
+}
+
+func reorderProbeTargets(current []string, requiredTokens []string, quality map[string]targetQuality) []string {
+	if len(current) == 0 {
+		return current
+	}
+	type scored struct {
+		url   string
+		score float64
+	}
+	required := make([]scored, 0, len(current))
+	optional := make([]scored, 0, len(current))
+	for _, url := range current {
+		q := quality[url]
+		score := targetSeparabilityScore(q)
+		s := scored{url: url, score: score}
+		if isRequiredTargetURL(url, requiredTokens) {
+			required = append(required, s)
+		} else {
+			optional = append(optional, s)
+		}
+	}
+	sort.SliceStable(required, func(i, j int) bool {
+		return required[i].score > required[j].score
+	})
+	sort.SliceStable(optional, func(i, j int) bool {
+		return optional[i].score > optional[j].score
+	})
+	out := make([]string, 0, len(current))
+	for _, s := range required {
+		out = append(out, s.url)
+	}
+	for _, s := range optional {
+		out = append(out, s.url)
+	}
+	return out
+}
+
+func targetSeparabilityScore(q targetQuality) float64 {
+	if q.GoodTotal == 0 && q.BadTotal == 0 {
+		return 0
+	}
+	goodRate := 0.0
+	if q.GoodTotal > 0 {
+		goodRate = float64(q.GoodPass) / float64(q.GoodTotal)
+	}
+	badRate := 0.0
+	if q.BadTotal > 0 {
+		badRate = float64(q.BadPass) / float64(q.BadTotal)
+	}
+	coverage := float64(q.GoodTotal+q.BadTotal) / 10.0
+	if coverage > 1 {
+		coverage = 1
+	}
+	return (goodRate - badRate) * coverage
+}
+
+func isRequiredTargetURL(url string, requiredTokens []string) bool {
+	for _, token := range requiredTokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if strings.Contains(url, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func candidateFailureReasonFromCtx(ctx context.Context) FailureReason {

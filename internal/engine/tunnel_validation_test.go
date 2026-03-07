@@ -105,3 +105,38 @@ func TestShouldPromoteLatencyProbable(t *testing.T) {
 		t.Fatalf("expected disabled threshold to prevent promotion")
 	}
 }
+
+func TestReorderProbeTargets_PinsRequiredTargets(t *testing.T) {
+	current := []string{
+		"https://www.cloudflare.com/cdn-cgi/trace",
+		"https://x.com/",
+		"https://www.youtube.com/",
+		"https://example.org/health",
+	}
+	quality := map[string]targetQuality{
+		"https://www.cloudflare.com/cdn-cgi/trace": {GoodTotal: 2, GoodPass: 2, BadTotal: 3, BadPass: 3}, // poor separator
+		"https://x.com/":             {GoodTotal: 5, GoodPass: 5, BadTotal: 5, BadPass: 0}, // strong separator
+		"https://www.youtube.com/":   {GoodTotal: 5, GoodPass: 4, BadTotal: 5, BadPass: 1},
+		"https://example.org/health": {GoodTotal: 5, GoodPass: 5, BadTotal: 5, BadPass: 5}, // neutral
+	}
+	required := []string{"x.com", "youtube.com"}
+	reordered := reorderProbeTargets(current, required, quality)
+
+	if len(reordered) != len(current) {
+		t.Fatalf("unexpected reordered length: %d", len(reordered))
+	}
+	if reordered[0] != "https://x.com/" {
+		t.Fatalf("expected x.com required target first, got %s", reordered[0])
+	}
+	if reordered[1] != "https://www.youtube.com/" {
+		t.Fatalf("expected youtube required target second, got %s", reordered[1])
+	}
+}
+
+func TestTargetSeparabilityScore(t *testing.T) {
+	good := targetSeparabilityScore(targetQuality{GoodTotal: 10, GoodPass: 9, BadTotal: 10, BadPass: 1})
+	poor := targetSeparabilityScore(targetQuality{GoodTotal: 10, GoodPass: 6, BadTotal: 10, BadPass: 5})
+	if good <= poor {
+		t.Fatalf("expected stronger separator to have higher score: good=%.3f poor=%.3f", good, poor)
+	}
+}

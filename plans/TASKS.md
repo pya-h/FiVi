@@ -385,7 +385,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Add periodic daemon heartbeat file (`~/.fivi/daemon.health.json`) with last successful probe and active node.
 - Done when: users can inspect daemon health without attaching interactive UI.
 
-61. [ ] `N2` Adaptive probe target strategy.
+61. [x] `N2` Adaptive probe target strategy.
 - Add rolling probe-target quality scoring and auto-prioritize targets that best separate good/bad nodes.
 - Keep profile-required targets pinned while adapting optional targets.
 - Done when: average time-to-first-working-node improves without reducing required-target strictness.

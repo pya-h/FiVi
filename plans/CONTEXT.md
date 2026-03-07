@@ -321,3 +321,24 @@
   - Daemon ops are now easier (`restart`, log tailing) and safer to inspect without interactive attachment.
   - `status` now exposes daemon state (`started` vs `ready`) when metadata is available.
   - External monitoring can read `daemon.health.json` for lightweight health checks.
+
+## 19) N2 Adaptive Probe Target Strategy (2026-03-07)
+- **What changed**:
+  - Added rolling per-target quality scoring from validation outcomes (working vs non-working pass rates).
+  - Implemented adaptive target reordering between discovery rounds using separability score.
+  - Required targets remain pinned to the front of the target list to preserve strict restricted-network guarantees.
+- **Files touched**:
+  - `internal/engine/engine.go`
+  - `internal/engine/tunnel_validation_test.go`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Probe targets are now dynamically ordered to prioritize targets that better distinguish good vs bad candidates.
+  - Required profile targets are still enforced and prioritized.
+- **Validation results**:
+  - Focused tests pass:
+    - `go test ./internal/engine`
+  - Full suite/build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task**:
+  - `N3` Engine expansion feasibility (`hysteria2` adapter).
