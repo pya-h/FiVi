@@ -155,6 +155,12 @@ FiVi saves the last working config in `~/.fivi/session.json` and, on restart, tr
 
 # Stop daemon gracefully
 ./fivi stop
+
+# Restart daemon (stops existing daemon if running, then starts again)
+./fivi restart --profile iran --engine xray --mode proxy
+
+# Show last daemon log lines
+./fivi logs --tail 120
 ```
 
 Daemon runtime files:
@@ -163,6 +169,8 @@ Daemon runtime files:
 ~/.fivi/fivi.pid
 ~/.fivi/fivi.log
 ~/.fivi/fivi.log.1   # rotated previous log when size limit is reached
+~/.fivi/fivi.pid.json      # pid metadata: started/ready state timestamps
+~/.fivi/daemon.health.json # periodic heartbeat with phase/node/probe health
 ```
 
 Once connected, FiVi exposes:

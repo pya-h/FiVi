@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -8,14 +9,38 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const defaultLogRotateBytes int64 = 5 * 1024 * 1024
 
 type Paths struct {
-	RootDir string
-	PIDFile string
-	LogFile string
+	RootDir     string
+	PIDFile     string
+	LogFile     string
+	PIDMetaFile string
+	HealthFile  string
+}
+
+type PIDMetadata struct {
+	PID       int       `json:"pid"`
+	State     string    `json:"state"` // started | ready
+	StartedAt time.Time `json:"started_at"`
+	ReadyAt   time.Time `json:"ready_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Heartbeat struct {
+	PID                 int           `json:"pid"`
+	Phase               string        `json:"phase"`
+	NodeName            string        `json:"node_name,omitempty"`
+	Protocol            string        `json:"protocol,omitempty"`
+	Ping                time.Duration `json:"ping"`
+	ProbeOK             int           `json:"probe_ok"`
+	ProbeTotal          int           `json:"probe_total"`
+	Failures            int           `json:"failures"`
+	LastSuccessfulProbe time.Time     `json:"last_successful_probe,omitempty"`
+	UpdatedAt           time.Time     `json:"updated_at"`
 }
 
 func DefaultPaths() (Paths, error) {
@@ -25,9 +50,11 @@ func DefaultPaths() (Paths, error) {
 	}
 	root := filepath.Join(home, ".fivi")
 	return Paths{
-		RootDir: root,
-		PIDFile: filepath.Join(root, "fivi.pid"),
-		LogFile: filepath.Join(root, "fivi.log"),
+		RootDir:     root,
+		PIDFile:     filepath.Join(root, "fivi.pid"),
+		LogFile:     filepath.Join(root, "fivi.log"),
+		PIDMetaFile: filepath.Join(root, "fivi.pid.json"),
+		HealthFile:  filepath.Join(root, "daemon.health.json"),
 	}, nil
 }
 
@@ -112,6 +139,52 @@ func RemovePID(path string) {
 	_ = os.Remove(path)
 }
 
+func WritePIDMetadata(path string, m PIDMetadata) error {
+	if m.PID <= 0 {
+		return fmt.Errorf("invalid pid %d", m.PID)
+	}
+	if m.UpdatedAt.IsZero() {
+		m.UpdatedAt = time.Now()
+	}
+	if err := writeJSONAtomic(path, m, 0o644); err != nil {
+		return fmt.Errorf("write pid metadata: %w", err)
+	}
+	return nil
+}
+
+func ReadPIDMetadata(path string) (PIDMetadata, error) {
+	body, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return PIDMetadata{}, err
+	}
+	var m PIDMetadata
+	if err := json.Unmarshal(body, &m); err != nil {
+		return PIDMetadata{}, err
+	}
+	return m, nil
+}
+
+func RemovePIDMetadata(path string) {
+	_ = os.Remove(path)
+}
+
+func WriteHeartbeat(path string, hb Heartbeat) error {
+	if hb.PID <= 0 {
+		return fmt.Errorf("invalid pid %d", hb.PID)
+	}
+	if hb.UpdatedAt.IsZero() {
+		hb.UpdatedAt = time.Now()
+	}
+	if err := writeJSONAtomic(path, hb, 0o644); err != nil {
+		return fmt.Errorf("write heartbeat: %w", err)
+	}
+	return nil
+}
+
+func RemoveHeartbeat(path string) {
+	_ = os.Remove(path)
+}
+
 func ProcessRunning(pid int) bool {
 	if pid <= 0 {
 		return false
@@ -134,4 +207,23 @@ func ProcessLooksLikeFiViDaemon(pid int) bool {
 		return false
 	}
 	return processLooksLikeFiViDaemon(pid)
+}
+
+func writeJSONAtomic(path string, value any, mode os.FileMode) error {
+	if err := EnsureDirs(path); err != nil {
+		return err
+	}
+	body, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, body, mode); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -61,6 +62,14 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "status" {
 		runStatus()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "restart" {
+		runRestart(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "logs" {
+		runLogs(os.Args[2:])
 		return
 	}
 
@@ -315,7 +324,18 @@ func runDaemonChild(appArgs []string) {
 		logx.Errorf("daemon child: failed writing pid file: %v", err)
 		os.Exit(1)
 	}
+	startedAt := time.Now()
+	if err := daemon.WritePIDMetadata(paths.PIDMetaFile, daemon.PIDMetadata{
+		PID:       os.Getpid(),
+		State:     "started",
+		StartedAt: startedAt,
+		UpdatedAt: startedAt,
+	}); err != nil {
+		logx.Warnf("daemon child: failed writing pid metadata: %v", err)
+	}
 	defer daemon.RemovePID(paths.PIDFile)
+	defer daemon.RemovePIDMetadata(paths.PIDMetaFile)
+	defer daemon.RemoveHeartbeat(paths.HealthFile)
 
 	os.Args = append([]string{os.Args[0]}, appArgs...)
 	cfg := config.ParseFlags()
@@ -332,7 +352,7 @@ func runDaemonChild(appArgs []string) {
 	defer cleanupMgr.Run()
 
 	logx.Infof("daemon mode started pid=%d", os.Getpid())
-	if err := runWithMode(ctx, cfg, ui.ModeLog); err != nil && !errors.Is(err, context.Canceled) {
+	if err := runDaemonWithHealth(ctx, cfg, paths, startedAt); err != nil && !errors.Is(err, context.Canceled) {
 		logx.Errorf("daemon fatal: %v", err)
 		cleanupMgr.Run()
 		os.Exit(1)
@@ -340,46 +360,112 @@ func runDaemonChild(appArgs []string) {
 	logx.Infof("daemon mode stopped")
 }
 
-func runStop() {
-	paths, err := daemon.DefaultPaths()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
-		os.Exit(1)
+func runDaemonWithHealth(ctx context.Context, cfg config.AppConfig, paths daemon.Paths, startedAt time.Time) error {
+	buffer := cfg.Workers * 8
+	if buffer < 128 {
+		buffer = 128
 	}
-	pid, err := daemon.ReadPID(paths.PIDFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "daemon is not running\n")
-		return
-	}
-	if !daemon.ProcessRunning(pid) {
-		daemon.RemovePID(paths.PIDFile)
-		fmt.Printf("daemon not running (stale pid %d removed)\n", pid)
-		return
-	}
-	if daemon.ProcessRunning(pid) && !daemon.ProcessLooksLikeFiViDaemon(pid) {
-		fmt.Fprintf(os.Stderr, "refusing to stop pid %d: not a FiVi daemon process\n", pid)
-		os.Exit(1)
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
-		os.Exit(1)
-	}
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
-		os.Exit(1)
+	events := make(chan engine.WorkerEvent, buffer)
+	statusSrc := make(chan engine.StatusUpdate, 64)
+	statusForReporter := make(chan engine.StatusUpdate, 64)
+
+	var nsChan <-chan netstats.Stats
+	if cfg.NetStats {
+		iface := cfg.NetStatsIface
+		if iface == "" {
+			detected, err := netstats.DetectInterface(cfg.IsTunnelMode())
+			if err == nil {
+				iface = detected
+			}
+		}
+		if iface != "" {
+			nsChan = netstats.StartMonitor(ctx, iface, 1*time.Second)
+		}
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if !daemon.ProcessRunning(pid) {
-			daemon.RemovePID(paths.PIDFile)
-			fmt.Printf("daemon stopped pid=%d\n", pid)
-			return
+	reporterCtx, reporterCancel := context.WithCancel(ctx)
+	reporterDone := make(chan struct{})
+	go func() {
+		defer close(reporterDone)
+		ui.RunLogProgressReporter(reporterCtx, events, statusForReporter, 2*time.Second, nsChan)
+	}()
+
+	healthDone := make(chan struct{})
+	go func() {
+		defer close(healthDone)
+		defer close(statusForReporter)
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		hb := daemon.Heartbeat{PID: os.Getpid(), Phase: "started", UpdatedAt: time.Now()}
+		readyWritten := false
+
+		flush := func() {
+			if err := daemon.WriteHeartbeat(paths.HealthFile, hb); err != nil {
+				logx.Warnf("daemon heartbeat write failed: %v", err)
+			}
 		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	fmt.Printf("daemon stop signal sent pid=%d (still shutting down)\n", pid)
+
+		for {
+			select {
+			case <-ctx.Done():
+				hb.UpdatedAt = time.Now()
+				flush()
+				return
+			case update, ok := <-statusSrc:
+				if !ok {
+					hb.UpdatedAt = time.Now()
+					flush()
+					return
+				}
+
+				select {
+				case statusForReporter <- update:
+				default:
+				}
+
+				hb.Phase = string(update.Phase)
+				hb.NodeName = update.NodeName
+				hb.Protocol = update.Protocol
+				hb.Ping = update.Ping
+				hb.ProbeOK = update.ProbeOK
+				hb.ProbeTotal = update.ProbeTotal
+				hb.Failures = update.Failures
+				if update.ProbeOK > 0 {
+					hb.LastSuccessfulProbe = time.Now()
+				}
+				hb.UpdatedAt = time.Now()
+
+				if !readyWritten && update.Phase == engine.PhaseMonitoring {
+					readyWritten = true
+					if err := daemon.WritePIDMetadata(paths.PIDMetaFile, daemon.PIDMetadata{
+						PID:       os.Getpid(),
+						State:     "ready",
+						StartedAt: startedAt,
+						ReadyAt:   time.Now(),
+						UpdatedAt: time.Now(),
+					}); err != nil {
+						logx.Warnf("daemon pid metadata update failed: %v", err)
+					}
+				}
+			case <-ticker.C:
+				hb.UpdatedAt = time.Now()
+				flush()
+			}
+		}
+	}()
+
+	err := engine.RunWithEvents(ctx, cfg, events, statusSrc)
+	close(events)
+	close(statusSrc)
+	reporterCancel()
+	<-healthDone
+	<-reporterDone
+	return err
+}
+
+func runStop() {
+	stopDaemonIfRunning(false)
 }
 
 func runStatus() {
@@ -394,7 +480,11 @@ func runStatus() {
 		return
 	}
 	if daemon.ProcessLooksLikeFiViDaemon(pid) {
-		fmt.Printf("daemon running pid=%d log=%s\n", pid, paths.LogFile)
+		state := "unknown"
+		if meta, err := daemon.ReadPIDMetadata(paths.PIDMetaFile); err == nil && meta.PID == pid {
+			state = meta.State
+		}
+		fmt.Printf("daemon running pid=%d state=%s log=%s\n", pid, state, paths.LogFile)
 		return
 	}
 	if daemon.ProcessRunning(pid) {
@@ -403,6 +493,121 @@ func runStatus() {
 	}
 	daemon.RemovePID(paths.PIDFile)
 	fmt.Printf("daemon not running (stale pid %s removed)\n", strconv.Itoa(pid))
+}
+
+func runRestart(args []string) {
+	_ = stopDaemonIfRunning(true)
+	runDaemon(args)
+}
+
+func runLogs(args []string) {
+	fs := flag.NewFlagSet("logs", flag.ExitOnError)
+	tail := fs.Int("tail", 80, "number of lines to show from daemon log")
+	_ = fs.Parse(args)
+
+	paths, err := daemon.DefaultPaths()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "logs failed: %v\n", err)
+		os.Exit(1)
+	}
+	lines, err := tailFile(paths.LogFile, *tail)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "logs failed: %v\n", err)
+		os.Exit(1)
+	}
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+}
+
+func stopDaemonIfRunning(quiet bool) bool {
+	paths, err := daemon.DefaultPaths()
+	if err != nil {
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
+		}
+		return false
+	}
+	pid, err := daemon.ReadPID(paths.PIDFile)
+	if err != nil {
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "daemon is not running\n")
+		}
+		return false
+	}
+	if !daemon.ProcessRunning(pid) {
+		daemon.RemovePID(paths.PIDFile)
+		daemon.RemovePIDMetadata(paths.PIDMetaFile)
+		daemon.RemoveHeartbeat(paths.HealthFile)
+		if !quiet {
+			fmt.Printf("daemon not running (stale pid %d removed)\n", pid)
+		}
+		return false
+	}
+	if !daemon.ProcessLooksLikeFiViDaemon(pid) {
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "refusing to stop pid %d: not a FiVi daemon process\n", pid)
+		}
+		os.Exit(1)
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
+		}
+		os.Exit(1)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "stop failed: %v\n", err)
+		}
+		os.Exit(1)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !daemon.ProcessRunning(pid) {
+			daemon.RemovePID(paths.PIDFile)
+			daemon.RemovePIDMetadata(paths.PIDMetaFile)
+			daemon.RemoveHeartbeat(paths.HealthFile)
+			if !quiet {
+				fmt.Printf("daemon stopped pid=%d\n", pid)
+			}
+			return true
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if !quiet {
+		fmt.Printf("daemon stop signal sent pid=%d (still shutting down)\n", pid)
+	}
+	return true
+}
+
+func tailFile(path string, n int) ([]string, error) {
+	if n <= 0 {
+		n = 80
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	ring := make([]string, 0, n)
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		line := s.Text()
+		if len(ring) < n {
+			ring = append(ring, line)
+			continue
+		}
+		copy(ring, ring[1:])
+		ring[n-1] = line
+	}
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	return ring, nil
 }
 
 func runWithMode(ctx context.Context, cfg config.AppConfig, mode ui.Mode) error {

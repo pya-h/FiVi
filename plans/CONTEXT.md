@@ -300,3 +300,24 @@
 - **Behavior impact**:
   - Operators can tune how strict probable promotion should be for low-latency but probe-failed configs.
   - Helps reduce false optimism in noisy networks while preserving fallback flexibility.
+
+## 18) N1 Daemon Hardening + Health Visibility (2026-03-07)
+- **What changed**:
+  - Added daemon lifecycle commands:
+    - `./fivi restart [fivi flags...]`
+    - `./fivi logs --tail N`
+  - Added PID metadata support with startup readiness marker:
+    - `~/.fivi/fivi.pid.json` with `state=started|ready` and timestamps.
+  - Added daemon heartbeat persistence:
+    - `~/.fivi/daemon.health.json` periodically updated with phase, active node/protocol, ping/probe/failures, and last successful probe timestamp.
+  - Reworked daemon child runtime path to run log reporter + heartbeat/metadata fanout from status updates.
+- **Files touched**:
+  - `main.go`
+  - `internal/daemon/daemon.go`
+  - `internal/daemon/daemon_test.go`
+  - `README.md`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Daemon ops are now easier (`restart`, log tailing) and safer to inspect without interactive attachment.
+  - `status` now exposes daemon state (`started` vs `ready`) when metadata is available.
+  - External monitoring can read `daemon.health.json` for lightweight health checks.

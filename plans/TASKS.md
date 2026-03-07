@@ -379,7 +379,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 
 ## Post-M Backlog (Proposed)
 
-60. [ ] `N1` Daemon hardening and health visibility.
+60. [x] `N1` Daemon hardening and health visibility.
 - Add daemon command support for `restart` and `logs --tail N`.
 - Add startup health marker in PID metadata to distinguish "started" vs "ready".
 - Add periodic daemon heartbeat file (`~/.fivi/daemon.health.json`) with last successful probe and active node.
