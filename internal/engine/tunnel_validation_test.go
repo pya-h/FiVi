@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"fivi/internal/engines"
 	"fivi/internal/parser"
 	"fivi/internal/probe"
+	"fivi/internal/sources"
 )
 
 type captureAdapter struct {
@@ -138,5 +140,44 @@ func TestTargetSeparabilityScore(t *testing.T) {
 	poor := targetSeparabilityScore(targetQuality{GoodTotal: 10, GoodPass: 6, BadTotal: 10, BadPass: 5})
 	if good <= poor {
 		t.Fatalf("expected stronger separator to have higher score: good=%.3f poor=%.3f", good, poor)
+	}
+}
+
+func TestSummarizeFailureReasons(t *testing.T) {
+	recent := []FailureReason{
+		FailureReasonProbeFailed,
+		"",
+		FailureReasonProbePartial,
+		FailureReasonProbeFailed,
+		FailureReasonProbeFailed,
+	}
+	top := summarizeFailureReasons(recent, 2)
+	if len(top) != 2 {
+		t.Fatalf("expected 2 top reasons, got %d", len(top))
+	}
+	if !strings.Contains(top[0], "probe_failed=3") {
+		t.Fatalf("unexpected top[0]=%q", top[0])
+	}
+	if !strings.Contains(top[1], "probe_partial=1") {
+		t.Fatalf("unexpected top[1]=%q", top[1])
+	}
+}
+
+func TestSummarizeSourceHealthTop(t *testing.T) {
+	now := time.Now()
+	stats := []sources.HealthStat{
+		{Source: "a", Successes: 5, Failures: 1, ConsecutiveFailures: 0, TotalYield: 80},
+		{Source: "b", Successes: 0, Failures: 4, ConsecutiveFailures: 3, TotalYield: 5, CooldownUntil: now.Add(30 * time.Second)},
+		{Source: "c", Successes: 1, Failures: 3, ConsecutiveFailures: 2, TotalYield: 10},
+	}
+	top := summarizeSourceHealthTop(stats, now, 2)
+	if len(top) != 2 {
+		t.Fatalf("expected 2 source top items, got %d", len(top))
+	}
+	if !strings.HasPrefix(top[0], "b ") {
+		t.Fatalf("expected source b as top offender, got %q", top[0])
+	}
+	if !strings.Contains(top[0], "yield=5") {
+		t.Fatalf("expected yield in top item, got %q", top[0])
 	}
 }

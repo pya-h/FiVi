@@ -124,6 +124,46 @@ func TestDashboardMonitoringView(t *testing.T) {
 	}
 }
 
+func TestDashboardMonitoringViewShowsFailureRollup(t *testing.T) {
+	model := newDashboardModel(context.Background(), nil, nil, nil)
+	updated, _ := model.Update(statusUpdateMsg(engine.StatusUpdate{
+		Phase:      engine.PhaseMonitoring,
+		NodeName:   "node-a",
+		Protocol:   "vmess",
+		SocksAddr:  "127.0.0.1:10808",
+		HTTPAddr:   "127.0.0.1:10809",
+		FailureTop: []string{"probe_failed=3", "probe_partial=1"},
+		Ping:       120 * time.Millisecond,
+		ProbeOK:    0,
+		ProbeTotal: 3,
+	}))
+	got := updated.(dashboardModel)
+	view := got.View()
+	if !strings.Contains(view, "Why failed") {
+		t.Fatalf("monitoring view missing failure rollup label")
+	}
+	if !strings.Contains(view, "probe_failed=3") {
+		t.Fatalf("monitoring view missing failure rollup payload")
+	}
+}
+
+func TestDashboardDiscoveryViewShowsSourceHealthTop(t *testing.T) {
+	model := newDashboardModel(context.Background(), nil, nil, nil)
+	updated, _ := model.Update(statusUpdateMsg(engine.StatusUpdate{
+		Phase:      engine.PhaseDiscovering,
+		TotalCands: 100,
+		SourceTop:  []string{"src-a ok=1 fail=5 yield=9 cd=22s"},
+	}))
+	got := updated.(dashboardModel)
+	view := got.View()
+	if !strings.Contains(view, "Source Health") {
+		t.Fatalf("discovery view missing source health panel")
+	}
+	if !strings.Contains(view, "src-a ok=1 fail=5") {
+		t.Fatalf("discovery view missing source health payload")
+	}
+}
+
 func TestRenderProgressBar(t *testing.T) {
 	bar := renderProgressBar(50, 100, 20)
 	if !strings.Contains(bar, "50%") {

@@ -73,6 +73,8 @@ type dashboardModel struct {
 	connFailures   int
 	socksAddr      string
 	httpAddr       string
+	failureTop     []string
+	sourceTop      []string
 
 	// Health check history (last N checks).
 	healthHistory []healthCheckEntry
@@ -173,6 +175,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.httpAddr = update.HTTPAddr
 		}
 		if update.Phase == engine.PhaseMonitoring {
+			m.failureTop = append([]string(nil), update.FailureTop...)
 			m.lastPing = update.Ping
 			m.lastSpeed = update.Speed
 			m.lastProbeOK = update.ProbeOK
@@ -189,6 +192,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.healthHistory) > 20 {
 				m.healthHistory = m.healthHistory[len(m.healthHistory)-20:]
 			}
+		} else if update.Phase == engine.PhaseDiscovering {
+			m.sourceTop = append([]string(nil), update.SourceTop...)
 		}
 		return m, waitStatusUpdateCmd(m.ctx, m.status)
 	case streamClosedMsg:
@@ -269,6 +274,13 @@ func (m dashboardModel) viewDiscovery() []string {
 	))
 	lines = append(lines, fmt.Sprintf(" %s %s",
 		labelStyle.Render("Stages:"), formatActiveStages(m.progress.active)))
+	if len(m.sourceTop) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render(" Source Health (Top Offenders)"))
+		for _, item := range m.sourceTop {
+			lines = append(lines, "  "+item)
+		}
+	}
 
 	// Connecting node.
 	if m.phase == engine.PhaseConnecting || m.phase == engine.PhaseFailover || m.phase == engine.PhaseWarmFailover {
@@ -332,6 +344,10 @@ func (m dashboardModel) viewMonitoring() []string {
 		))
 	}
 	lines = append(lines, "")
+	if len(m.failureTop) > 0 {
+		lines = append(lines, fmt.Sprintf(" %s %s", labelStyle.Render("Why failed (last checks):"), strings.Join(m.failureTop, " | ")))
+		lines = append(lines, "")
+	}
 
 	// Health check history.
 	if len(m.healthHistory) > 0 {

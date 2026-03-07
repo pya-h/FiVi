@@ -31,6 +31,8 @@ func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEven
 	state := newProgressState()
 	var lastPhase engine.Phase
 	var lastNS *netstats.Stats
+	var lastFailureTop []string
+	var lastSourceTop []string
 	for {
 		select {
 		case <-ctx.Done():
@@ -76,6 +78,18 @@ func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEven
 					logger("phase: warm failover (trying pre-validated standbys)")
 				}
 			}
+			if update.Phase == engine.PhaseDiscovering {
+				lastSourceTop = append([]string(nil), update.SourceTop...)
+				if len(lastSourceTop) > 0 {
+					logger("source-health(top): %s", strings.Join(lastSourceTop, " | "))
+				}
+			}
+			if update.Phase == engine.PhaseMonitoring {
+				lastFailureTop = append([]string(nil), update.FailureTop...)
+				if len(lastFailureTop) > 0 {
+					logger("why-failed(last checks): %s", strings.Join(lastFailureTop, " | "))
+				}
+			}
 			if update.Phase == engine.PhaseMonitoring && update.Ping > 0 {
 				logger("health: ping=%s probes=%d/%d failures=%d", update.Ping.Round(time.Millisecond), update.ProbeOK, update.ProbeTotal, update.Failures)
 			}
@@ -95,6 +109,12 @@ func runLogProgressReporter(ctx context.Context, events <-chan engine.WorkerEven
 					lastNS.Interface,
 					netstats.FormatSpeed(lastNS.RecvSpeed),
 					netstats.FormatSpeed(lastNS.SendSpeed))
+			}
+			if len(lastFailureTop) > 0 {
+				snap += fmt.Sprintf(" failTop=[%s]", strings.Join(lastFailureTop, ","))
+			}
+			if len(lastSourceTop) > 0 {
+				snap += fmt.Sprintf(" srcTop=[%s]", strings.Join(lastSourceTop, ","))
 			}
 			logger("progress snapshot: %s", snap)
 		}

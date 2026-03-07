@@ -400,7 +400,7 @@ At the end of each completed task, update `plans/CONTEXT.md` with:
 - Keep current mode semantics unchanged.
 - Done when: active node can be preemptively switched based on stable score drop thresholds.
 
-64. [ ] `N5` UI clarity improvements for long runs.
+64. [x] `N5` UI clarity improvements for long runs.
 - Add explicit "why failed" rollup in TUI monitoring view (top failure reasons over last N checks).
 - Add compact source health panel in discovery view (success/cooldown/yield top offenders).
 - Mirror key TUI insights in `--no-tui` snapshots.

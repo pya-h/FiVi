@@ -426,3 +426,35 @@
     - `go build ./...`
 - **Next task**:
   - `N5` UI clarity improvements for long runs.
+
+## 23) N5 UI Clarity Improvements for Long Runs (2026-03-07)
+- **What changed**:
+  - Added monitoring failure-reason rollup payloads to status updates (`FailureTop`) computed over a rolling recent-check window.
+  - Added discovery source-health offender payloads (`SourceTop`) derived from source health stats (success/fail/yield/cooldown).
+  - Updated TUI dashboard:
+    - monitoring view now shows “why failed” rollup (top failure reasons over recent checks),
+    - discovery view now shows compact source-health top offenders panel.
+  - Updated `--no-tui` log reporter to mirror the same diagnostics in phase logs and periodic snapshots (`failTop=[...]`, `srcTop=[...]`).
+- **Files touched**:
+  - `internal/engine/events.go`
+  - `internal/engine/engine.go`
+  - `internal/engine/tunnel_validation_test.go`
+  - `internal/ui/dashboard.go`
+  - `internal/ui/dashboard_test.go`
+  - `internal/ui/progress.go`
+  - `internal/ui/progress_test.go`
+  - `README.md`
+  - `plans/TASKS.md`
+- **Behavior impact**:
+  - Users can diagnose recurring degradation reasons directly in monitoring UI/log mode without scanning verbose worker events.
+  - Discovery runs now expose source-level offenders compactly, improving long-run debugging of cooldown/yield/failure issues.
+  - Existing connection semantics remain unchanged; this is visibility/diagnostics-only behavior.
+- **Validation results**:
+  - Focused package tests pass:
+    - `go test ./internal/engine`
+    - `go test ./internal/ui`
+  - Full suite/build pass:
+    - `go test ./...`
+    - `go build ./...`
+- **Next task**:
+  - `N6` Connection quality guardrails.

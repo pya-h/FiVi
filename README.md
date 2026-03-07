@@ -314,6 +314,8 @@ Displays real-time:
 - Active stage breakdown (parse / spawn / probe)
 - Currently connected node
 - Last event timestamp
+- Monitoring rollup for top failure reasons over recent checks
+- Discovery source-health panel with top offenders (success/fail/yield/cooldown)
 
 **Controls:** `q` or `Ctrl+C` to quit.
 
@@ -329,6 +331,11 @@ Output format:
 ```
 2025-01-15 14:30:22 [INFO] processed=142 working=8 probable=3 failed=131 running=10 stages=probe=6,spawn=3,parse=1
 ```
+
+Log mode also mirrors key long-run diagnostics:
+- `why-failed(last checks): ...` during monitoring
+- `source-health(top): ...` during discovery
+- periodic snapshot suffixes `failTop=[...]` and `srcTop=[...]`
 
 FiVi auto-detects non-interactive terminals and falls back to log mode.
 

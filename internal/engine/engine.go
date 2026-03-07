@@ -94,6 +94,11 @@ type discoveryResult struct {
 	Targets  []string
 }
 
+const (
+	monitorInsightWindow = 12
+	summaryTopN          = 3
+)
+
 var (
 	checkThroughSOCKSFn = probe.CheckThroughSOCKS
 	measureDownloadFn   = probe.MeasureDownloadSpeedMbps
@@ -335,9 +340,11 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 			all = append(all, cached...)
 		}
 	}
+	sourceTop := []string{}
 	if health != nil {
 		stats := health.Snapshot()
 		printSourceHealthSummary(stats)
+		sourceTop = summarizeSourceHealthTop(stats, time.Now(), summaryTopN)
 		if err := writeSourceReport(stats); err != nil {
 			logx.Warnf("failed to write source report: %v", err)
 		}
@@ -379,7 +386,7 @@ func discoverAndRank(ctx context.Context, cfg config.AppConfig, health *sources.
 	}
 
 	logx.Infof("testing %d candidates with %d workers", len(cands), cfg.Workers)
-	emitStatus(status, StatusUpdate{Phase: PhaseDiscovering, TotalCands: len(cands)})
+	emitStatus(status, StatusUpdate{Phase: PhaseDiscovering, TotalCands: len(cands), SourceTop: sourceTop})
 
 	// Write all fetched configs before validation.
 	writeAllConfigs(cands)
@@ -913,6 +920,7 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 	dropStreak := 0
 	altBetterStreak := 0
 	baselineScore := 0.0
+	recentFailures := make([]FailureReason, 0, monitorInsightWindow)
 	for {
 		select {
 		case <-ctx.Done():
@@ -921,6 +929,8 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 			tick++
 			res := checkThroughSOCKSFn(ctx, cfg.ListenSocksAddr, cfg.Targets, cfg.ProbeTimeout)
 			if isProbeQualified(cfg, res) {
+				recentFailures = appendRollingFailure(recentFailures, "", monitorInsightWindow)
+				failureTop := summarizeFailureReasons(recentFailures, summaryTopN)
 				activeScore := scoreCandidate(res.Successes, res.AvgLatency)
 				if baselineScore <= 0 {
 					baselineScore = activeScore
@@ -976,11 +986,15 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 					ConnectedAt: connectedAt,
 					SocksAddr:   cfg.ListenSocksAddr,
 					HTTPAddr:    cfg.ListenHTTPAddr,
+					FailureTop:  failureTop,
 				})
 				continue
 			}
 			dropStreak = 0
 			altBetterStreak = 0
+			reason := classifyMonitorFailure(cfg, res)
+			recentFailures = appendRollingFailure(recentFailures, reason, monitorInsightWindow)
+			failureTop := summarizeFailureReasons(recentFailures, summaryTopN)
 			failures++
 			printConnectionStatus(cand, cfg.ListenSocksAddr, cfg.ListenHTTPAddr, 0, connectedAt, res, 0, failures)
 			emitStatus(status, StatusUpdate{
@@ -994,12 +1008,122 @@ func monitorConnection(ctx context.Context, cfg config.AppConfig, cand Ranked, r
 				ConnectedAt: connectedAt,
 				SocksAddr:   cfg.ListenSocksAddr,
 				HTTPAddr:    cfg.ListenHTTPAddr,
+				FailureTop:  failureTop,
 			})
 			if failures >= cfg.MonitorFailLimit {
 				return fmt.Errorf("health checks failed %d times", failures)
 			}
 		}
 	}
+}
+
+func classifyMonitorFailure(cfg config.AppConfig, res probe.Result) FailureReason {
+	minSuccess := cfg.ProbeMinSuccess
+	if minSuccess < 1 {
+		minSuccess = 1
+	}
+	if minSuccess > len(cfg.Targets) {
+		minSuccess = len(cfg.Targets)
+	}
+	if res.Successes < minSuccess {
+		return FailureReasonProbeFailed
+	}
+	if !hasRequiredTargetsOK(res.Targets, cfg.RequiredTargets) {
+		return FailureReasonProbePartial
+	}
+	return FailureReasonProbeFailed
+}
+
+func appendRollingFailure(in []FailureReason, reason FailureReason, maxN int) []FailureReason {
+	if maxN < 1 {
+		maxN = 1
+	}
+	out := append(in, reason)
+	if len(out) > maxN {
+		out = out[len(out)-maxN:]
+	}
+	return out
+}
+
+func summarizeFailureReasons(recent []FailureReason, topN int) []string {
+	if topN < 1 {
+		topN = 1
+	}
+	counts := map[FailureReason]int{}
+	for _, reason := range recent {
+		if reason == "" {
+			continue
+		}
+		counts[reason]++
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	type kv struct {
+		Reason FailureReason
+		Count  int
+	}
+	items := make([]kv, 0, len(counts))
+	for reason, count := range counts {
+		items = append(items, kv{Reason: reason, Count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Count != items[j].Count {
+			return items[i].Count > items[j].Count
+		}
+		return items[i].Reason < items[j].Reason
+	})
+	if topN > len(items) {
+		topN = len(items)
+	}
+	out := make([]string, 0, topN)
+	for i := 0; i < topN; i++ {
+		out = append(out, fmt.Sprintf("%s=%d", items[i].Reason, items[i].Count))
+	}
+	return out
+}
+
+func summarizeSourceHealthTop(stats []sources.HealthStat, now time.Time, topN int) []string {
+	if len(stats) == 0 || topN <= 0 {
+		return nil
+	}
+	type scored struct {
+		Stat  sources.HealthStat
+		Score int
+	}
+	items := make([]scored, 0, len(stats))
+	for _, stat := range stats {
+		score := stat.ConsecutiveFailures*100 + stat.Failures*10 - stat.Successes
+		if !stat.CooldownUntil.IsZero() && now.Before(stat.CooldownUntil) {
+			score += 50
+		}
+		if score <= 0 {
+			continue
+		}
+		items = append(items, scored{Stat: stat, Score: score})
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Score != items[j].Score {
+			return items[i].Score > items[j].Score
+		}
+		return items[i].Stat.Source < items[j].Stat.Source
+	})
+	if topN > len(items) {
+		topN = len(items)
+	}
+	out := make([]string, 0, topN)
+	for i := 0; i < topN; i++ {
+		stat := items[i].Stat
+		cooldown := "none"
+		if !stat.CooldownUntil.IsZero() && now.Before(stat.CooldownUntil) {
+			cooldown = time.Until(stat.CooldownUntil).Round(time.Second).String()
+		}
+		out = append(out, fmt.Sprintf("%s ok=%d fail=%d yield=%d cd=%s", stat.Source, stat.Successes, stat.Failures, stat.TotalYield, cooldown))
+	}
+	return out
 }
 
 func benchmarkAlternatives(ctx context.Context, cfg config.AppConfig, ranked []Ranked, currentIndex int, adapter engines.Adapter, engineBin string) (bestScore float64, bestName string, ok bool) {
